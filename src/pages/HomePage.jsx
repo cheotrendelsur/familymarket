@@ -149,7 +149,7 @@ export default function HomePage({ setIsModalOpen }) {
         }
       })
 
-      // 4. Ordenar por patrimonio total
+      // 4. Ordenar por patrimonio total (DESCENDENTE - mayor a menor)
       userNetWorth.sort((a, b) => b.totalNetWorth - a.totalNetWorth)
 
       setLeaderboard(userNetWorth)
@@ -306,7 +306,7 @@ export default function HomePage({ setIsModalOpen }) {
       </div>
 
       {/* ============================================= */}
-      {/* SECCIÓN 3: RANKING FAMILIAR */}
+      {/* SECCIÓN 3: RANKING FAMILIAR (MODIFICADO) */}
       {/* ============================================= */}
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-3 mb-4">
@@ -343,39 +343,65 @@ export default function HomePage({ setIsModalOpen }) {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {leaderboard.map((user, index) => {
+                    // La posición es el índice + 1 (dinámico basado en ordenamiento)
                     const position = index + 1
+                    
+                    // Determinar icono y color según posición
                     let PositionIcon = null
                     let iconColor = ''
+                    let numberColor = ''
+                    let numberSize = ''
+                    let rowBackground = ''
 
                     if (position === 1) {
                       PositionIcon = Trophy
                       iconColor = 'text-yellow-500'
+                      numberColor = 'text-yellow-600'
+                      numberSize = 'text-2xl'
+                      rowBackground = 'bg-yellow-50'
                     } else if (position === 2) {
                       PositionIcon = Medal
                       iconColor = 'text-gray-400'
+                      numberColor = 'text-gray-600'
+                      numberSize = 'text-xl'
+                      rowBackground = 'bg-gray-50'
                     } else if (position === 3) {
                       PositionIcon = Award
                       iconColor = 'text-amber-600'
+                      numberColor = 'text-amber-700'
+                      numberSize = 'text-xl'
+                      rowBackground = 'bg-orange-50'
+                    } else {
+                      numberColor = 'text-gray-600'
+                      numberSize = 'text-base'
+                      rowBackground = ''
                     }
 
                     return (
                       <tr 
                         key={user.userId}
-                        className={`hover:bg-gray-50 transition-colors ${
-                          position === 1 ? 'bg-yellow-50' : ''
-                        }`}
+                        className={`hover:bg-gray-50 transition-colors ${rowBackground}`}
                       >
+                        {/* Columna de Posición */}
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {PositionIcon ? (
-                              <PositionIcon size={20} className={iconColor} strokeWidth={2} />
-                            ) : (
-                              <span className="text-sm font-bold text-gray-500 w-5 text-center">
-                                #{position}
-                              </span>
+                          <div className="flex items-center gap-3">
+                            {/* Número de posición (siempre visible) */}
+                            <span className={`font-bold ${numberColor} ${numberSize} min-w-[2rem] text-center`}>
+                              {position}
+                            </span>
+                            
+                            {/* Icono (solo para top 3) */}
+                            {PositionIcon && (
+                              <PositionIcon 
+                                size={position === 1 ? 24 : 20} 
+                                className={iconColor} 
+                                strokeWidth={2.5} 
+                              />
                             )}
                           </div>
                         </td>
+
+                        {/* Columna de Nombre */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`font-bold ${
                             position === 1 ? 'text-yellow-700 text-lg' : 'text-gray-900'
@@ -383,16 +409,22 @@ export default function HomePage({ setIsModalOpen }) {
                             {user.username}
                           </span>
                         </td>
+
+                        {/* Columna de Efectivo */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className="text-sm text-gray-600">
                             ${user.cash.toFixed(2)}
                           </span>
                         </td>
+
+                        {/* Columna de En Acciones */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className="text-sm text-gray-600">
                             ${user.sharesValue.toFixed(2)}
                           </span>
                         </td>
+
+                        {/* Columna de Patrimonio Total */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className={`font-bold text-lg ${
                             position === 1 ? 'text-yellow-600' : 'text-gray-900'
