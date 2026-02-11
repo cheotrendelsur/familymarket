@@ -2,7 +2,7 @@ import { Home, TrendingUp, Briefcase, Settings } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-export default function BottomNav() {
+export default function BottomNav({ isHidden = false }) {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -19,7 +19,9 @@ export default function BottomNav() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-bottom">
+    <div className={`fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-bottom transition-transform duration-300 ${
+      isHidden ? 'translate-y-full' : 'translate-y-0'
+    }`}>
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-around items-center h-16">
           {tabs.map((tab) => {

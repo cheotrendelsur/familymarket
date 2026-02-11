@@ -4,7 +4,7 @@ import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle } fro
 import MarketCard from '../components/MarketCard'
 import TradeModal from '../components/TradeModal'
 
-export default function HomePage() {
+export default function HomePage({ setIsModalOpen }) {
   const [activeMarkets, setActiveMarkets] = useState([])
   const [closedMarkets, setClosedMarkets] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
@@ -47,6 +47,13 @@ export default function HomePage() {
       supabase.removeChannel(channel)
     }
   }, [])
+
+  // Notificar al padre cuando el modal se abre/cierra
+  useEffect(() => {
+    if (setIsModalOpen) {
+      setIsModalOpen(selectedMarket !== null && tradeSide !== null)
+    }
+  }, [selectedMarket, tradeSide, setIsModalOpen])
 
   const fetchAllData = async () => {
     await Promise.all([fetchMarkets(), fetchLeaderboard()])

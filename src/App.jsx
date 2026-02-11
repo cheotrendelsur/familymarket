@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import AuthPage from './pages/AuthPage'
@@ -12,6 +13,7 @@ import UsernameSetup from './components/UsernameSetup'
 // Layout para rutas protegidas
 function AppLayout() {
   const { user, loading, needsUsername, refreshProfile } = useAuth()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   if (loading) {
     return (
@@ -38,13 +40,13 @@ function AppLayout() {
       <Navbar />
       <main className="pt-16 pb-20">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<HomePage setIsModalOpen={setIsModalOpen} />} />
           <Route path="/market" element={<MarketPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
-      <BottomNav />
+      <BottomNav isHidden={isModalOpen} />
     </div>
   )
 }
