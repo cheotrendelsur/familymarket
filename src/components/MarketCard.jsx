@@ -3,8 +3,10 @@ import { TrendingUp } from 'lucide-react'
 
 const MarketCard = memo(function MarketCard({ market, onClickYes, onClickNo }) {
   const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-  const yesPrice = parseFloat(market.yes_pool) / totalPool
-  const noPrice = parseFloat(market.no_pool) / totalPool
+  
+  // CPMM: Precio normalizado (price_yes + price_no = 1.00)
+  const yesPrice = parseFloat(market.no_pool) / totalPool
+  const noPrice = parseFloat(market.yes_pool) / totalPool
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
@@ -52,7 +54,7 @@ const MarketCard = memo(function MarketCard({ market, onClickYes, onClickNo }) {
 
         {/* Pool Info */}
         <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 text-center">
-          Pool Total: ${totalPool.toFixed(2)}
+          Liquidez: {totalPool.toFixed(0)} tokens
         </div>
       </div>
     </div>

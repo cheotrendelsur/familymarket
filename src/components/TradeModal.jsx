@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { X, TrendingUp, TrendingDown, AlertCircle, Zap } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { X, AlertCircle, Zap, Info } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 
@@ -54,23 +54,91 @@ export default function TradeModal({ market, side, onClose }) {
     }
   }
 
-  const calculatePrice = useCallback(() => {
+  // =============================================
+  // CÁLCULOS CPMM
+  // =============================================
+  
+  const currentPrice = useMemo(() => {
     const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-    const pool = side === 'YES' ? parseFloat(market.yes_pool) : parseFloat(market.no_pool)
+    const pool = side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
     return pool / totalPool
   }, [market.yes_pool, market.no_pool, side])
 
+  const estimatedReturn = useMemo(() => {
+    if (!amount || parseFloat(amount) <= 0) return null
+
+    const investment = parseFloat(amount)
+    const yesPool = parseFloat(market.yes_pool)
+    const noPool = parseFloat(market.no_pool)
+    const k = yesPool * noPool
+    
+    // Fee del 2%
+    const fee = investment * 0.02
+    const investmentAfterFee = investment - fee
+
+    let sharesReceived = 0
+
+    if (mode === 'BUY') {
+      if (side === 'YES') {
+        const newYesPool = yesPool + investmentAfterFee
+        const newNoPool = k / newYesPool
+        sharesReceived = noPool - newNoPool
+      } else {
+        const newNoPool = noPool + investmentAfterFee
+        const newYesPool = k / newNoPool
+        sharesReceived = yesPool - newYesPool
+      }
+
+      const avgPrice = investment / sharesReceived
+      const impliedProb = (sharesReceived / investment) * 100
+
+      return {
+        shares: sharesReceived,
+        avgPrice: avgPrice,
+        fee: fee,
+        impliedProbability: Math.min(impliedProb, 99)
+      }
+    } else {
+      // SELL
+      const sharesToSell = parseFloat(amount)
+      
+      if (side === 'YES') {
+        const newNoPool = noPool + sharesToSell
+        const newYesPool = k / newNoPool
+        const payoutBeforeFee = yesPool - newYesPool
+        const feeAmount = payoutBeforeFee * 0.02
+        const payout = payoutBeforeFee - feeAmount
+
+        return {
+          payout: payout,
+          avgPrice: payout / sharesToSell,
+          fee: feeAmount
+        }
+      } else {
+        const newYesPool = yesPool + sharesToSell
+        const newNoPool = k / newYesPool
+        const payoutBeforeFee = noPool - newNoPool
+        const feeAmount = payoutBeforeFee * 0.02
+        const payout = payoutBeforeFee - feeAmount
+
+        return {
+          payout: payout,
+          avgPrice: payout / sharesToSell,
+          fee: feeAmount
+        }
+      }
+    }
+  }, [amount, market.yes_pool, market.no_pool, side, mode])
+
   const calculateMaxPrice = useCallback(() => {
-    const currentPrice = calculatePrice()
     const tolerance = slippageTolerance / 100
-    return currentPrice * (1 + tolerance)
-  }, [calculatePrice, slippageTolerance])
+    return Math.min(currentPrice * (1 + tolerance), 0.99)
+  }, [currentPrice, slippageTolerance])
 
   const calculateMinPrice = useCallback(() => {
-    const currentPrice = calculatePrice()
     const tolerance = slippageTolerance / 100
-    return currentPrice * (1 - tolerance)
-  }, [calculatePrice, slippageTolerance])
+    return Math.max(currentPrice * (1 - tolerance), 0.01)
+  }, [currentPrice, slippageTolerance])
 
   const handleTrade = async () => {
     setError(null)
@@ -96,7 +164,7 @@ export default function TradeModal({ market, side, onClose }) {
         refreshProfile()
         onClose()
         
-        alert(`✅ Compra exitosa!\n\nAdquiriste: ${data.shares_bought.toFixed(2)} acciones de ${side}\nPrecio: ${(data.price * 100).toFixed(2)}¢\nMovimientos restantes hoy: ${data.daily_moves_remaining}`)
+        alert(`✅ Compra exitosa!\n\nRecibiste: ${data.shares_bought.toFixed(2)} tokens de ${side}\nPrecio promedio: ${(data.price * 100).toFixed(2)}¢\nFee pagado: $${data.fee_paid.toFixed(2)}\nMovimientos restantes: ${data.daily_moves_remaining}`)
       } else {
         if (parseFloat(amount) > userShares) {
           throw new Error('No tienes suficientes acciones')
@@ -116,7 +184,7 @@ export default function TradeModal({ market, side, onClose }) {
         refreshProfile()
         onClose()
         
-        alert(`✅ Venta exitosa!\n\nVendiste: ${data.shares_sold.toFixed(2)} acciones\nRecibiste: $${data.payout.toFixed(2)}\nMovimientos restantes hoy: ${data.daily_moves_remaining}`)
+        alert(`✅ Venta exitosa!\n\nVendiste: ${data.shares_sold.toFixed(2)} tokens\nRecibiste: $${data.payout.toFixed(2)}\nFee pagado: $${data.fee_paid.toFixed(2)}\nMovimientos restantes: ${data.daily_moves_remaining}`)
       }
     } catch (error) {
       setError(error.message)
@@ -124,8 +192,6 @@ export default function TradeModal({ market, side, onClose }) {
       setLoading(false)
     }
   }
-
-  const price = calculatePrice()
 
   return (
     <div 
@@ -154,7 +220,6 @@ export default function TradeModal({ market, side, onClose }) {
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors tap-feedback no-select"
-            aria-label="Cerrar"
           >
             <X size={24} className="text-gray-600" />
           </button>
@@ -203,48 +268,19 @@ export default function TradeModal({ market, side, onClose }) {
                 <div className={`text-3xl font-bold ${
                   side === 'YES' ? 'text-polygreen' : 'text-polyred'
                 }`}>
-                  {(price * 100).toFixed(1)}¢
+                  {(currentPrice * 100).toFixed(1)}¢
                 </div>
                 <div className="text-sm text-gray-600 mt-0.5">
-                  {(price * 100).toFixed(0)}% probabilidad
+                  {(currentPrice * 100).toFixed(1)}% probabilidad
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Slippage Tolerance */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-gray-700">
-                Tolerancia de Slippage
-              </label>
-              <span className="text-sm font-bold text-polyblue">
-                {slippageTolerance}%
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="20"
-              step="0.5"
-              value={slippageTolerance}
-              onChange={(e) => setSlippageTolerance(parseFloat(e.target.value))}
-              className="w-full"
-              style={{ touchAction: 'none' }}
-            />
-            <div className="text-xs text-gray-600 mt-2">
-              {mode === 'BUY' ? (
-                <p>Precio máximo aceptado: <strong>{(calculateMaxPrice() * 100).toFixed(2)}¢</strong></p>
-              ) : (
-                <p>Precio mínimo aceptado: <strong>{(calculateMinPrice() * 100).toFixed(2)}¢</strong></p>
-              )}
             </div>
           </div>
 
           {/* Amount Input */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              {mode === 'BUY' ? 'Cantidad a invertir' : 'Acciones a vender'}
+              {mode === 'BUY' ? 'Cantidad a invertir (USD)' : 'Tokens a vender'}
             </label>
             <div className="relative">
               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-xl font-semibold pointer-events-none">
@@ -267,7 +303,7 @@ export default function TradeModal({ market, side, onClose }) {
 
             <div className="flex justify-between items-center mt-2.5 text-sm">
               <span className="text-gray-600">
-                {mode === 'BUY' ? 'Saldo disponible:' : 'Acciones disponibles:'}
+                {mode === 'BUY' ? 'Saldo:' : 'Tienes:'}
               </span>
               <button
                 onClick={() => setAmount(mode === 'BUY' ? profile?.balance.toString() : userShares.toString())}
@@ -275,9 +311,84 @@ export default function TradeModal({ market, side, onClose }) {
               >
                 {mode === 'BUY'
                   ? `$${profile?.balance.toFixed(2)}`
-                  : `${userShares.toFixed(2)} acciones`
+                  : `${userShares.toFixed(2)} tokens`
                 }
               </button>
+            </div>
+          </div>
+
+          {/* Estimated Return */}
+          {estimatedReturn && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Info size={16} className="text-polyblue" />
+                <span className="text-sm font-bold text-gray-700">Estimación CPMM</span>
+              </div>
+              
+              {mode === 'BUY' ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Recibirás:</span>
+                    <span className="font-bold text-gray-900">{estimatedReturn.shares.toFixed(2)} tokens</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Precio promedio:</span>
+                    <span className="font-bold text-gray-900">{(estimatedReturn.avgPrice * 100).toFixed(2)}¢</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Fee (2%):</span>
+                    <span className="font-bold text-red-600">-${estimatedReturn.fee.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-blue-200">
+                    <span className="text-gray-600">Prob. implícita:</span>
+                    <span className="font-bold text-polyblue">{estimatedReturn.impliedProbability.toFixed(1)}%</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Recibirás:</span>
+                    <span className="font-bold text-green-600">${estimatedReturn.payout.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Precio promedio:</span>
+                    <span className="font-bold text-gray-900">{(estimatedReturn.avgPrice * 100).toFixed(2)}¢</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Fee (2%):</span>
+                    <span className="font-bold text-red-600">-${estimatedReturn.fee.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Slippage Tolerance */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-700">
+                Tolerancia de Slippage
+              </label>
+              <span className="text-sm font-bold text-yellow-700">
+                {slippageTolerance}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0.5"
+              max="20"
+              step="0.5"
+              value={slippageTolerance}
+              onChange={(e) => setSlippageTolerance(parseFloat(e.target.value))}
+              className="w-full"
+              style={{ touchAction: 'none' }}
+            />
+            <div className="text-xs text-gray-600 mt-2">
+              {mode === 'BUY' ? (
+                <p>Precio máximo: <strong>{(calculateMaxPrice() * 100).toFixed(2)}¢</strong></p>
+              ) : (
+                <p>Precio mínimo: <strong>{(calculateMinPrice() * 100).toFixed(2)}¢</strong></p>
+              )}
             </div>
           </div>
 
@@ -285,19 +396,7 @@ export default function TradeModal({ market, side, onClose }) {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
               <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="text-red-700 text-sm flex-1">
-                {error}
-              </div>
-            </div>
-          )}
-
-          {/* Warning if low moves */}
-          {dailyMovesRemaining !== null && dailyMovesRemaining <= 5 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
-              <AlertCircle size={18} className="text-yellow-600 flex-shrink-0 mt-0.5" />
-              <p className="text-yellow-800 text-xs flex-1">
-                <strong>Advertencia:</strong> Solo te quedan {dailyMovesRemaining} movimientos hoy. Usa tus operaciones sabiamente.
-              </p>
+              <p className="text-red-700 text-sm flex-1">{error}</p>
             </div>
           )}
 
