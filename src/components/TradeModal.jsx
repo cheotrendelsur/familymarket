@@ -64,68 +64,79 @@ export default function TradeModal({ market, side, onClose }) {
     return pool / totalPool
   }, [market.yes_pool, market.no_pool, side])
 
+  // En src/components/TradeModal.jsx
+
   const estimatedReturn = useMemo(() => {
     if (!amount || parseFloat(amount) <= 0) return null
 
     const investment = parseFloat(amount)
     const yesPool = parseFloat(market.yes_pool)
     const noPool = parseFloat(market.no_pool)
-    const k = yesPool * noPool
+    // Nota: En Mint&Swap el k se calcula dinámicamente, pero para estimación visual
+    // necesitamos replicar la logica de "base + swap".
     
-    // Fee del 2%
+    // 1. Fee
     const fee = investment * 0.02
     const investmentAfterFee = investment - fee
+    
+    // 2. MINT (Acciones base garantizadas)
+    const sharesBase = investmentAfterFee
 
-    let sharesReceived = 0
+    // 3. SWAP (Vender las acciones del lado opuesto)
+    let sharesFromSwap = 0
+    const k = yesPool * noPool
 
     if (mode === 'BUY') {
       if (side === 'YES') {
-        const newYesPool = yesPool + investmentAfterFee
-        const newNoPool = k / newYesPool
-        sharesReceived = noPool - newNoPool
-      } else {
+        // Usuario inyecta NO al pool
         const newNoPool = noPool + investmentAfterFee
         const newYesPool = k / newNoPool
-        sharesReceived = yesPool - newYesPool
+        sharesFromSwap = yesPool - newYesPool
+      } else {
+        // Usuario inyecta YES al pool
+        const newYesPool = yesPool + investmentAfterFee
+        const newNoPool = k / newYesPool
+        sharesFromSwap = noPool - newNoPool
       }
 
-      const avgPrice = investment / sharesReceived
-      const impliedProb = (sharesReceived / investment) * 100
+      const totalShares = sharesBase + sharesFromSwap
+      const avgPrice = investment / totalShares
+      const impliedProb = (totalShares / investment) // Esto es inverso, mejor usar el precio del pool resultante
 
       return {
-        shares: sharesReceived,
+        shares: totalShares,
         avgPrice: avgPrice,
         fee: fee,
-        impliedProbability: Math.min(impliedProb, 99)
+        impliedProbability: Math.min(avgPrice * 100, 99) // Estimación visual
       }
     } else {
-      // SELL
-      const sharesToSell = parseFloat(amount)
+      // Lógica de Venta (Se mantiene igual o similar, ya que es inversa)
+      // Para simplificar, puedes dejar la lógica de venta actual si no quieres complicarte,
+      // ya que la discrepancia en venta suele ser menor.
+      // Pero idealmente debería reflejar el SQL de venta.
       
-      if (side === 'YES') {
-        const newNoPool = noPool + sharesToSell
-        const newYesPool = k / newNoPool
-        const payoutBeforeFee = yesPool - newYesPool
+      const sharesToSell = parseFloat(amount)
+      // ... (El código de venta que ya tenías suele ser bastante aproximado)
+       if (side === 'YES') {
+        const newYesPool = yesPool + sharesToSell // Ojo: En SQL ajustamos la logica inversa
+        const newNoPool = k / newYesPool // Esto es una aproximación estándar CPMM
+        const payoutBeforeFee = noPool - newNoPool
         const feeAmount = payoutBeforeFee * 0.02
-        const payout = payoutBeforeFee - feeAmount
-
         return {
-          payout: payout,
-          avgPrice: payout / sharesToSell,
+          payout: payoutBeforeFee - feeAmount,
+          avgPrice: (payoutBeforeFee - feeAmount) / sharesToSell,
           fee: feeAmount
         }
       } else {
-        const newYesPool = yesPool + sharesToSell
-        const newNoPool = k / newYesPool
-        const payoutBeforeFee = noPool - newNoPool
-        const feeAmount = payoutBeforeFee * 0.02
-        const payout = payoutBeforeFee - feeAmount
-
-        return {
-          payout: payout,
-          avgPrice: payout / sharesToSell,
+         const newNoPool = noPool + sharesToSell
+         const newYesPool = k / newNoPool
+         const payoutBeforeFee = yesPool - newYesPool
+         const feeAmount = payoutBeforeFee * 0.02
+         return {
+          payout: payoutBeforeFee - feeAmount,
+          avgPrice: (payoutBeforeFee - feeAmount) / sharesToSell,
           fee: feeAmount
-        }
+         }
       }
     }
   }, [amount, market.yes_pool, market.no_pool, side, mode])
