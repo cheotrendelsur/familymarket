@@ -1,16 +1,42 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import AuthPage from './pages/AuthPage'
-import HomePage from './pages/HomePage'
-import MarketPage from './pages/MarketPage'
-import PortfolioPage from './pages/PortfolioPage'
-import AdminPage from './pages/AdminPage'
 import Navbar from './components/Navbar'
 import BottomNav from './components/BottomNav'
 import UsernameSetup from './components/UsernameSetup'
 
-// Layout para rutas protegidas
+// ============================================
+// LAZY LOADING DE PÁGINAS (OPTIMIZACIÓN)
+// ============================================
+
+// AuthPage se carga inmediatamente (es la primera página)
+import AuthPage from './pages/AuthPage'
+
+// Las demás páginas se cargan bajo demanda (lazy)
+const HomePage = lazy(() => import('./pages/HomePage'))
+const MarketPage = lazy(() => import('./pages/MarketPage'))
+const PortfolioPage = lazy(() => import('./pages/PortfolioPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+
+// ============================================
+// COMPONENTE DE LOADING (MIENTRAS CARGA LAZY)
+// ============================================
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-polygray-bg">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-3 border-polyblue mx-auto mb-3"></div>
+        <p className="text-gray-600 text-sm font-medium">Cargando...</p>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// LAYOUT PARA RUTAS PROTEGIDAS
+// ============================================
+
 function AppLayout() {
   const { user, loading, needsUsername, refreshProfile } = useAuth()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -39,19 +65,25 @@ function AppLayout() {
     <div className="min-h-screen bg-polygray-bg">
       <Navbar />
       <main className="pt-16 pb-20">
-        <Routes>
-          <Route path="/" element={<HomePage setIsModalOpen={setIsModalOpen} />} />
-          <Route path="/market" element={<MarketPage />} />
-          <Route path="/portfolio" element={<PortfolioPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Routes>
+        {/* Suspense envuelve las rutas lazy para mostrar loader */}
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<HomePage setIsModalOpen={setIsModalOpen} />} />
+            <Route path="/market" element={<MarketPage />} />
+            <Route path="/portfolio" element={<PortfolioPage />} />
+            <Route path="/admin" element={<AdminPage />} />
+          </Routes>
+        </Suspense>
       </main>
       <BottomNav isHidden={isModalOpen} />
     </div>
   )
 }
 
-// Componente principal
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 function App() {
   return (
     <AuthProvider>

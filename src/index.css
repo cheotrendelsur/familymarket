@@ -3,64 +3,115 @@
 @tailwind utilities;
 
 @layer base {
-  * {
-    -webkit-tap-highlight-color: transparent;
-  }
+  /* ============================================= */
+  /* OPTIMIZACIONES PARA iOS Y ANDROID */
+  /* ============================================= */
   
-  body {
-    @apply bg-polygray-bg text-gray-900 font-sans antialiased;
-    overscroll-behavior: none;
+  * {
+    /* Eliminar highlight azul/gris al tocar en móviles */
+    -webkit-tap-highlight-color: transparent;
+    /* Mejorar rendimiento de animaciones */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
+  
   html {
-    overscroll-behavior: none;
+    /* Evitar rebote elástico en toda la página (iOS) */
+    overscroll-behavior-y: none;
+    /* Altura real del viewport en móviles */
+    height: 100%;
   }
 
-  /* Mejorar apariencia en iOS */
-  input,
-  textarea,
-  select,
-  button {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-  }
-
-  /* Evitar zoom en inputs en iOS */
-  input[type="text"],
-  input[type="number"],
-  input[type="email"],
-  input[type="password"],
-  textarea,
-  select {
-    font-size: 16px;
-  }
-
-  /* Mejorar scroll en móviles */
-  * {
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Remover bordes de enfoque por defecto en móviles */
-  button:focus,
-  input:focus,
-  textarea:focus,
-  select:focus {
-    outline: none;
-  }
-
-  /* Safe area para dispositivos con notch (iPhone X+) */
   body {
+    @apply bg-polygray-bg text-gray-900 font-sans antialiased;
+    /* Evitar rebote elástico del body */
+    overscroll-behavior: none;
+    /* Safe areas para notch de iPhone y barra de Android */
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* Altura mínima considerando safe areas */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    /* Prevenir zoom en orientación landscape en iOS */
+    -webkit-text-size-adjust: 100%;
+    /* Mejorar scroll en iOS */
+    -webkit-overflow-scrolling: touch;
   }
-}
 
-@layer utilities {
+  /* ============================================= */
+  /* OPTIMIZACIÓN DE INPUTS (CRÍTICO PARA iOS) */
+  /* ============================================= */
+  
+  input,
+  textarea,
+  select,
+  button {
+    /* Remover estilos nativos de iOS/Android */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    /* Eliminar delay de 300ms en taps */
+    touch-action: manipulation;
+  }
+
+  /* IMPORTANTE: Font-size mínimo 16px para evitar zoom en iOS */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Remover spinner en inputs number (mejor UX móvil) */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* ============================================= */
+  /* OPTIMIZACIÓN DE BOTONES */
+  /* ============================================= */
+  
+  button {
+    /* Cursor pointer solo en desktop */
+    cursor: pointer;
+    /* Eliminar outline en focus (usaremos ring de Tailwind) */
+    outline: none;
+    /* Eliminar delay de tap */
+    touch-action: manipulation;
+    /* Prevenir selección de texto al mantener presionado */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Mejorar feedback visual en móviles */
+  button:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+    transition: all 0.1s ease;
+  }
+
+  /* ============================================= */
+  /* SCROLL OPTIMIZADO */
+  /* ============================================= */
+  
+  /* Permitir scroll suave en contenedores específicos */
+  .scrollable-container {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
   /* Ocultar scrollbar pero mantener funcionalidad */
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -71,7 +122,24 @@
     display: none;
   }
 
-  /* Safe area utilities */
+  /* ============================================= */
+  /* SAFE AREA UTILITIES */
+  /* ============================================= */
+  
+  /* Variables CSS para safe areas (compatibilidad) */
+  :root {
+    --sat: env(safe-area-inset-top);
+    --sar: env(safe-area-inset-right);
+    --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left);
+  }
+}
+
+@layer utilities {
+  /* ============================================= */
+  /* UTILIDADES PARA SAFE AREAS */
+  /* ============================================= */
+  
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }
@@ -86,5 +154,103 @@
 
   .safe-right {
     padding-right: env(safe-area-inset-right);
+  }
+
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+
+  /* ============================================= */
+  /* UTILIDADES DE RENDIMIENTO */
+  /* ============================================= */
+  
+  /* Aceleración de GPU para animaciones */
+  .gpu-accelerate {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+
+  /* Prevenir selección de texto (útil en botones/cards) */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+  }
+
+  /* Smooth scroll para navegación */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ============================================= */
+  /* ANIMACIONES OPTIMIZADAS */
+  /* ============================================= */
+  
+  /* Transiciones optimizadas (solo transform y opacity) */
+  .transition-optimized {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    will-change: transform, opacity;
+  }
+
+  /* Tap feedback (alternativa a :active) */
+  .tap-feedback:active {
+    transform: scale(0.97);
+    opacity: 0.8;
+  }
+}
+
+/* ============================================= */
+/* FIXES ESPECÍFICOS PARA iOS */
+/* ============================================= */
+
+/* Fix para inputs en iOS que no respetan padding */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* Fix para 100vh en móviles (considera barra de navegación) */
+@supports (-webkit-touch-callout: none) {
+  .min-h-screen {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* ============================================= */
+/* OPTIMIZACIÓN DE FUENTES */
+/* ============================================= */
+
+/* Prevenir parpadeo de fuentes al cargar */
+@font-face {
+  font-display: swap;
+}
+
+/* ============================================= */
+/* MODO OSCURO (OPCIONAL - PARA FUTURO) */
+/* ============================================= */
+
+@media (prefers-color-scheme: dark) {
+  /* Aquí puedes agregar estilos dark mode si lo necesitas */
+}
+
+/* ============================================= */
+/* MEDIA QUERIES PARA TABLETS Y DESKTOP */
+/* ============================================= */
+
+/* Revertir algunas optimizaciones en desktop */
+@media (min-width: 768px) {
+  button:active {
+    transform: none;
+  }
+  
+  body {
+    -webkit-overflow-scrolling: auto;
   }
 }

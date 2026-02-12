@@ -2,23 +2,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon-16.png', 'icon-32.png', 'icon-120.png', 'icon-152.png', 'icon-167.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'],
+      includeAssets: ['icon-*.png'],
       manifest: {
         name: 'FamilyMarket - Mercado de Predicciones',
         short_name: 'FamilyMarket',
-        description: 'Mercado de predicciones familiar - Compra y vende acciones de eventos futuros',
+        description: 'Mercado de predicciones familiar',
         theme_color: '#2563EB',
         background_color: '#F9FAFB',
         display: 'standalone',
         orientation: 'portrait-primary',
-        scope: '/',
         start_url: '/',
+        scope: '/',
         icons: [
           {
             src: '/icon-192.png',
@@ -35,30 +34,60 @@ export default defineConfig({
         ]
       },
       workbox: {
-        cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
+        // Cache de runtime para Supabase API
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-cache',
+              cacheName: 'supabase-api-cache',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 // 24 horas
+                maxAgeSeconds: 60 * 5 // 5 minutos
               },
               cacheableResponse: {
                 statuses: [0, 200]
               }
             }
+          },
+          {
+            urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 días
+              }
+            }
           }
-        ]
+        ],
+        skipWaiting: true,
+        clientsClaim: true
       }
     })
   ],
-  server: {
-    host: true,
-    port: 5173
+  build: {
+    // Optimizaciones de producción
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separar vendor chunks para mejor caching
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'supabase-vendor': ['@supabase/supabase-js'],
+          'chart-vendor': ['recharts']
+        }
+      }
+    },
+    // Minificación agresiva
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    },
+    // Optimización de chunks
+    chunkSizeWarningLimit: 1000
   }
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle } from 'lucide-react'
 import MarketCard from '../components/MarketCard'
@@ -16,7 +16,9 @@ export default function HomePage({ setIsModalOpen }) {
   useEffect(() => {
     fetchAllData()
 
-    // Suscripción Realtime solo a transacciones para actualizar ranking
+    // ============================================
+    // OPTIMIZACIÓN: Suscripción Realtime con cleanup
+    // ============================================
     const channel = supabase
       .channel('homepage-changes')
       .on(
@@ -43,6 +45,7 @@ export default function HomePage({ setIsModalOpen }) {
       )
       .subscribe()
 
+    // CRÍTICO: Cleanup para evitar duplicar suscripciones
     return () => {
       supabase.removeChannel(channel)
     }
@@ -62,7 +65,6 @@ export default function HomePage({ setIsModalOpen }) {
 
   const fetchMarkets = async () => {
     try {
-      // Mercados activos
       const { data: active, error: activeError } = await supabase
         .from('markets')
         .select('*')
@@ -72,7 +74,6 @@ export default function HomePage({ setIsModalOpen }) {
       if (activeError) throw activeError
       setActiveMarkets(active || [])
 
-      // Mercados cerrados
       const { data: closed, error: closedError } = await supabase
         .from('markets')
         .select('*')
@@ -90,7 +91,6 @@ export default function HomePage({ setIsModalOpen }) {
 
   const fetchLeaderboard = async () => {
     try {
-      // 1. Obtener todos los perfiles con username
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, username, balance, email')
@@ -98,7 +98,6 @@ export default function HomePage({ setIsModalOpen }) {
 
       if (profilesError) throw profilesError
 
-      // 2. Obtener todas las acciones de estos usuarios
       const { data: shares, error: sharesError } = await supabase
         .from('shares')
         .select(`
@@ -112,11 +111,9 @@ export default function HomePage({ setIsModalOpen }) {
 
       if (sharesError) throw sharesError
 
-      // 3. Calcular patrimonio total de cada usuario
       const userNetWorth = profiles.map(profile => {
         const cash = parseFloat(profile.balance)
         
-        // Calcular valor de acciones
         const userShares = shares?.filter(s => s.user_id === profile.id) || []
         const sharesValue = userShares.reduce((total, share) => {
           const market = share.markets
@@ -125,12 +122,10 @@ export default function HomePage({ setIsModalOpen }) {
           let shareValue = 0
           
           if (market.closed) {
-            // Mercado cerrado: acciones ganadoras valen $1, perdedoras $0
             if (share.side === market.outcome) {
               shareValue = parseFloat(share.count) * 1.0
             }
           } else {
-            // Mercado activo: calcular valor según precio actual
             const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
             const pool = share.side === 'YES' ? parseFloat(market.yes_pool) : parseFloat(market.no_pool)
             const currentPrice = pool / totalPool
@@ -149,7 +144,6 @@ export default function HomePage({ setIsModalOpen }) {
         }
       })
 
-      // 4. Ordenar por patrimonio total (DESCENDENTE - mayor a menor)
       userNetWorth.sort((a, b) => b.totalNetWorth - a.totalNetWorth)
 
       setLeaderboard(userNetWorth)
@@ -158,21 +152,21 @@ export default function HomePage({ setIsModalOpen }) {
     }
   }
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     await fetchAllData()
-  }
+  }, [])
 
-  const handleTradeClick = (market, side) => {
+  const handleTradeClick = useCallback((market, side) => {
     setSelectedMarket(market)
     setTradeSide(side)
-  }
+  }, [])
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setSelectedMarket(null)
     setTradeSide(null)
     fetchMarkets()
-  }
+  }, [])
 
   if (loading) {
     return (
@@ -187,9 +181,7 @@ export default function HomePage({ setIsModalOpen }) {
 
   return (
     <div className="min-h-screen-safe bg-polygray-bg pb-6">
-      {/* ============================================= */}
       {/* SECCIÓN 1: MERCADOS ACTIVOS */}
-      {/* ============================================= */}
       <div className="bg-white border-b border-gray-200 mb-6">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-4">
@@ -202,7 +194,7 @@ export default function HomePage({ setIsModalOpen }) {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors active:bg-gray-200 disabled:opacity-50"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors active:bg-gray-200 disabled:opacity-50 tap-feedback no-select"
               aria-label="Refrescar mercados"
             >
               <RefreshCw 
@@ -233,9 +225,7 @@ export default function HomePage({ setIsModalOpen }) {
         </div>
       </div>
 
-      {/* ============================================= */}
       {/* SECCIÓN 2: MERCADOS FINALIZADOS */}
-      {/* ============================================= */}
       <div className="max-w-7xl mx-auto px-4 mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Mercados Finalizados</h2>
         
@@ -256,7 +246,6 @@ export default function HomePage({ setIsModalOpen }) {
                   className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-80 hover:opacity-100 transition-opacity"
                 >
                   <div className="p-4">
-                    {/* Header */}
                     <div className="flex items-start gap-3 mb-3">
                       <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
                         <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
@@ -266,7 +255,6 @@ export default function HomePage({ setIsModalOpen }) {
                       </h3>
                     </div>
 
-                    {/* Winner Badge */}
                     <div className={`rounded-xl p-4 border-2 mb-3 ${
                       market.outcome === 'YES'
                         ? 'bg-emerald-50 border-emerald-300'
@@ -286,7 +274,6 @@ export default function HomePage({ setIsModalOpen }) {
                       </div>
                     </div>
 
-                    {/* Final Prices */}
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="text-center">
                         <div className="text-gray-500">Precio Final YES</div>
@@ -305,9 +292,7 @@ export default function HomePage({ setIsModalOpen }) {
         )}
       </div>
 
-      {/* ============================================= */}
-      {/* SECCIÓN 3: RANKING FAMILIAR (MODIFICADO) */}
-      {/* ============================================= */}
+      {/* SECCIÓN 3: RANKING FAMILIAR */}
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-3 mb-4">
           <Trophy size={28} className="text-yellow-500" strokeWidth={2} />
@@ -343,10 +328,8 @@ export default function HomePage({ setIsModalOpen }) {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {leaderboard.map((user, index) => {
-                    // La posición es el índice + 1 (dinámico basado en ordenamiento)
                     const position = index + 1
                     
-                    // Determinar icono y color según posición
                     let PositionIcon = null
                     let iconColor = ''
                     let numberColor = ''
@@ -382,15 +365,12 @@ export default function HomePage({ setIsModalOpen }) {
                         key={user.userId}
                         className={`hover:bg-gray-50 transition-colors ${rowBackground}`}
                       >
-                        {/* Columna de Posición */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            {/* Número de posición (siempre visible) */}
                             <span className={`font-bold ${numberColor} ${numberSize} min-w-[2rem] text-center`}>
                               {position}
                             </span>
                             
-                            {/* Icono (solo para top 3) */}
                             {PositionIcon && (
                               <PositionIcon 
                                 size={position === 1 ? 24 : 20} 
@@ -401,7 +381,6 @@ export default function HomePage({ setIsModalOpen }) {
                           </div>
                         </td>
 
-                        {/* Columna de Nombre */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`font-bold ${
                             position === 1 ? 'text-yellow-700 text-lg' : 'text-gray-900'
@@ -410,21 +389,18 @@ export default function HomePage({ setIsModalOpen }) {
                           </span>
                         </td>
 
-                        {/* Columna de Efectivo */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className="text-sm text-gray-600">
                             ${user.cash.toFixed(2)}
                           </span>
                         </td>
 
-                        {/* Columna de En Acciones */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className="text-sm text-gray-600">
                             ${user.sharesValue.toFixed(2)}
                           </span>
                         </td>
 
-                        {/* Columna de Patrimonio Total */}
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           <span className={`font-bold text-lg ${
                             position === 1 ? 'text-yellow-600' : 'text-gray-900'

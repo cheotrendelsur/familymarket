@@ -2,56 +2,134 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     
-    <!-- Viewport optimizado para PWA móvil -->
+    <!-- ============================================= -->
+    <!-- OPTIMIZACIONES CRÍTICAS PARA MÓVIL -->
+    <!-- ============================================= -->
+    
+    <!-- Viewport optimizado para iOS y Android -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
-    <!-- PWA Meta Tags -->
+    <!-- Prevenir zoom en iOS al rotar -->
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- ============================================= -->
+    <!-- PWA CONFIGURATION -->
+    <!-- ============================================= -->
+    
+    <!-- Theme color para Android -->
     <meta name="theme-color" content="#2563EB" />
+    
+    <!-- iOS specific meta tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="FamilyMarket" />
-    <meta name="mobile-web-app-capable" content="yes" />
     
-    <!-- Descripción y keywords -->
-    <meta name="description" content="Mercado de predicciones familiar - Compra y vende acciones de eventos futuros" />
-    <meta name="keywords" content="predicciones, mercado, familia, apuestas" />
+    <!-- ============================================= -->
+    <!-- ICONS -->
+    <!-- ============================================= -->
     
-    <!-- Iconos para iOS -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
-    <link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icon-120.png" />
-    
-    <!-- Iconos para Android y otros -->
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png" />
     
-    <!-- Manifest -->
+    <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
     
-    <!-- Splash screens para iOS (opcional pero recomendado) -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- ============================================= -->
+    <!-- PRECONNECT PARA SUPABASE (OPTIMIZACIÓN) -->
+    <!-- ============================================= -->
     
-    <!-- Prevenir zoom en inputs (iOS) -->
-    <style>
-      input[type="text"],
-      input[type="number"],
-      input[type="email"],
-      input[type="password"],
-      textarea,
-      select {
-        font-size: 16px !important;
-      }
-    </style>
+    <link rel="preconnect" href="https://supabase.co" />
+    <link rel="dns-prefetch" href="https://supabase.co" />
+    
+    <!-- ============================================= -->
+    <!-- TITLE & DESCRIPTION -->
+    <!-- ============================================= -->
     
     <title>FamilyMarket - Mercado de Predicciones</title>
+    <meta name="description" content="Mercado de predicciones familiar para eventos de 5 días" />
+    
+    <!-- ============================================= -->
+    <!-- CSS INLINE CRÍTICO (PREVENIR FLASH) -->
+    <!-- ============================================= -->
+    
+    <style>
+      /* Prevenir flash de contenido sin estilo */
+      html {
+        background-color: #F9FAFB;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      }
+      
+      /* Loader inicial */
+      #app-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #F9FAFB;
+        z-index: 9999;
+      }
+      
+      .loader-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #E5E7EB;
+        border-top-color: #2563EB;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Ocultar loader cuando la app carga */
+      .app-loaded #app-loader {
+        display: none;
+      }
+    </style>
   </head>
   <body>
+    <!-- ============================================= -->
+    <!-- LOADER INICIAL (SE OCULTA CUANDO REACT CARGA) -->
+    <!-- ============================================= -->
+    
+    <div id="app-loader">
+      <div class="loader-spinner"></div>
+    </div>
+    
+    <!-- ============================================= -->
+    <!-- ROOT DE REACT -->
+    <!-- ============================================= -->
+    
     <div id="root"></div>
+    
+    <!-- ============================================= -->
+    <!-- SCRIPT DE REACT -->
+    <!-- ============================================= -->
+    
     <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- ============================================= -->
+    <!-- SCRIPT PARA OCULTAR LOADER AL CARGAR -->
+    <!-- ============================================= -->
+    
+    <script>
+      window.addEventListener('load', () => {
+        document.body.classList.add('app-loaded')
+      })
+    </script>
   </body>
 </html>
