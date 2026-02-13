@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import BottomNav from './components/BottomNav'
@@ -88,6 +89,18 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        {/* NUEVO: CONTENEDOR DE NOTIFICACIONES */}
+        <Toaster 
+          position="top-center"
+          toastOptions={{
+            duration: 5000,
+            style: {
+              borderRadius: '16px',
+              padding: '16px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+            },
+          }}
+        />
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/*" element={<AppLayout />} />

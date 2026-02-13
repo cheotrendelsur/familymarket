@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { X, AlertCircle, Zap, Info } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import toast from 'react-hot-toast'
 
 export default function TradeModal({ market, side, onClose }) {
   const { profile, refreshProfile } = useAuth()
@@ -256,7 +257,20 @@ export default function TradeModal({ market, side, onClose }) {
         refreshProfile()
         onClose()
         
-        alert(`✅ Compra exitosa!\n\nRecibiste: ${data.shares_bought.toFixed(2)} tokens de ${side}\nPrecio promedio: ${(data.price * 100).toFixed(2)}¢\nFee pagado: $${data.fee_paid.toFixed(2)}\nMovimientos restantes: ${data.daily_moves_remaining}`)
+        toast.success(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold text-base text-gray-900">¡Compra exitosa!</span>
+            <span className="text-sm text-gray-600">Recibiste: <b className="text-polygreen">{data.shares_bought.toFixed(2)}</b> tokens {side}</span>
+            <span className="text-sm text-gray-600">Precio promedio: <b className="text-gray-900">{(data.price * 100).toFixed(2)}¢</b></span>
+            <span className="text-sm text-gray-600">Fee pagado: <b className="text-polyred">${data.fee_paid.toFixed(2)}</b></span>
+            <span className="text-xs text-gray-500 mt-2 flex items-center gap-1 font-semibold">
+              ⚡ {data.daily_moves_remaining} movimientos restantes
+            </span>
+          </div>,
+          { duration: 5000 }
+        )
+        // ==========================================
+
       } else {
         if (parseFloat(amount) > userShares) {
           throw new Error('No tienes suficientes acciones')
@@ -276,7 +290,20 @@ export default function TradeModal({ market, side, onClose }) {
         refreshProfile()
         onClose()
         
-        alert(`✅ Venta exitosa!\n\nVendiste: ${data.shares_sold.toFixed(2)} tokens\nRecibiste: $${data.payout.toFixed(2)}\nFee pagado: $${data.fee_paid.toFixed(2)}\nMovimientos restantes: ${data.daily_moves_remaining}`)
+        toast.success(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold text-base text-gray-900">¡Venta exitosa!</span>
+            <span className="text-sm text-gray-600">Vendiste: <b className="text-gray-900">{data.shares_sold.toFixed(2)}</b> tokens {side}</span>
+            <span className="text-sm text-gray-600">Recibiste: <b className="text-polygreen">${data.payout.toFixed(2)}</b></span>
+            <span className="text-sm text-gray-600">Fee pagado: <b className="text-polyred">${data.fee_paid.toFixed(2)}</b></span>
+            <span className="text-xs text-gray-500 mt-2 flex items-center gap-1 font-semibold">
+              ⚡ {data.daily_moves_remaining} movimientos restantes
+            </span>
+          </div>,
+          { duration: 5000 }
+        )
+        // ==========================================
+
       }
     } catch (error) {
       setError(error.message)
