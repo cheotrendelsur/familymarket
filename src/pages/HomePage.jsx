@@ -122,12 +122,13 @@ export default function HomePage({ setIsModalOpen }) {
           let shareValue = 0
           
           if (market.closed) {
-            if (share.side === market.outcome) {
-              shareValue = parseFloat(share.count) * 1.0
-            }
+            // CORRECCIÓN 1: Si cerró, las acciones valen $0 en el portafolio 
+            // porque la ganancia ya se depositó en el "Efectivo".
+            shareValue = 0
           } else {
+            // CORRECCIÓN 2: Lógica CPMM correcta (piscina contraria) para mercados activos.
             const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-            const pool = share.side === 'YES' ? parseFloat(market.yes_pool) : parseFloat(market.no_pool)
+            const pool = share.side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
             const currentPrice = pool / totalPool
             shareValue = parseFloat(share.count) * currentPrice
           }

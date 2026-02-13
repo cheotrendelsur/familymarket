@@ -39,107 +39,181 @@ export default function TradeModal({ market, side, onClose }) {
 
   const fetchDailyMovesRemaining = async () => {
     try {
-      const { data, error } = await supabase
+      // CORRECCIÓN: Extraemos 'count' en lugar de 'data'
+      const { count, error } = await supabase
         .from('transaction_logs')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('user_id', profile.id)
         .gte('created_at', new Date().toISOString().split('T')[0])
         .in('action', ['BUY', 'SELL'])
 
       if (error) throw error
-      setDailyMovesRemaining(25 - (data || 0))
+      // Ahora sí restamos el conteo real
+      setDailyMovesRemaining(25 - (count || 0))
     } catch (error) {
       console.error('Error al obtener movimientos diarios:', error)
       setDailyMovesRemaining(25)
     }
   }
 
-  // =============================================
-  // CÁLCULOS CPMM
-  // =============================================
-  
   const currentPrice = useMemo(() => {
     const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-    const pool = side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
-    return pool / totalPool
+    
+    if (side === 'YES') {
+      return parseFloat(market.no_pool) / totalPool
+    } else {
+      return parseFloat(market.yes_pool) / totalPool
+    }
   }, [market.yes_pool, market.no_pool, side])
 
-  // En src/components/TradeModal.jsx
-
+  // =============================================
+  // LÓGICA CORREGIDA: REPLICA SQL EXACTO
+  // =============================================
+  
   const estimatedReturn = useMemo(() => {
     if (!amount || parseFloat(amount) <= 0) return null
 
-    const investment = parseFloat(amount)
     const yesPool = parseFloat(market.yes_pool)
     const noPool = parseFloat(market.no_pool)
-    // Nota: En Mint&Swap el k se calcula dinámicamente, pero para estimación visual
-    // necesitamos replicar la logica de "base + swap".
-    
-    // 1. Fee
-    const fee = investment * 0.02
-    const investmentAfterFee = investment - fee
-    
-    // 2. MINT (Acciones base garantizadas)
-    const sharesBase = investmentAfterFee
-
-    // 3. SWAP (Vender las acciones del lado opuesto)
-    let sharesFromSwap = 0
     const k = yesPool * noPool
+    const totalPool = yesPool + noPool
+    const FEE_RATE = 0.02
 
     if (mode === 'BUY') {
+      // ==========================================
+      // COMPRA: LÓGICA MINT & SWAP (CORREGIDA)
+      // ==========================================
+      const investment = parseFloat(amount)
+      const fee = investment * FEE_RATE
+      const investmentAfterFee = investment - fee
+
+      // 1. MINT: Acciones base garantizadas (1 dólar = 1 acción)
+      const sharesBase = investmentAfterFee
+
+      // 2. SWAP: Vender las acciones del lado opuesto al pool (K CONSTANTE)
+      let sharesFromSwap = 0
+      let finalPrice = 0
+
       if (side === 'YES') {
-        // Usuario inyecta NO al pool
+        // Metes tokens NO al pool
         const newNoPool = noPool + investmentAfterFee
         const newYesPool = k / newNoPool
-        sharesFromSwap = yesPool - newYesPool
+        sharesFromSwap = yesPool - newYesPool // Sacas tokens YES
+        
+        finalPrice = newNoPool / (newYesPool + newNoPool)
       } else {
-        // Usuario inyecta YES al pool
+        // Metes tokens YES al pool
         const newYesPool = yesPool + investmentAfterFee
         const newNoPool = k / newYesPool
-        sharesFromSwap = noPool - newNoPool
+        sharesFromSwap = noPool - newNoPool // Sacas tokens NO
+        
+        finalPrice = newYesPool / (newYesPool + newNoPool)
       }
 
       const totalShares = sharesBase + sharesFromSwap
       const avgPrice = investment / totalShares
-      const impliedProb = (totalShares / investment) // Esto es inverso, mejor usar el precio del pool resultante
+      const priceImpact = ((finalPrice - currentPrice) / currentPrice) * 100
 
       return {
+        type: 'BUY',
         shares: totalShares,
         avgPrice: avgPrice,
         fee: fee,
-        impliedProbability: Math.min(avgPrice * 100, 99) // Estimación visual
+        finalPrice: finalPrice,
+        priceImpact: priceImpact
       }
+
     } else {
-      // Lógica de Venta (Se mantiene igual o similar, ya que es inversa)
-      // Para simplificar, puedes dejar la lógica de venta actual si no quieres complicarte,
-      // ya que la discrepancia en venta suele ser menor.
-      // Pero idealmente debería reflejar el SQL de venta.
+      // ==========================================
+      // VENTA: NO TOCAR (FUNCIONA PERFECTO)
+      // ==========================================
       
       const sharesToSell = parseFloat(amount)
-      // ... (El código de venta que ya tenías suele ser bastante aproximado)
-       if (side === 'YES') {
-        const newYesPool = yesPool + sharesToSell // Ojo: En SQL ajustamos la logica inversa
-        const newNoPool = k / newYesPool // Esto es una aproximación estándar CPMM
-        const payoutBeforeFee = noPool - newNoPool
-        const feeAmount = payoutBeforeFee * 0.02
-        return {
-          payout: payoutBeforeFee - feeAmount,
-          avgPrice: (payoutBeforeFee - feeAmount) / sharesToSell,
-          fee: feeAmount
-        }
+      
+      let Y, N
+      
+      if (side === 'YES') {
+        Y = yesPool
+        N = noPool
       } else {
-         const newNoPool = noPool + sharesToSell
-         const newYesPool = k / newNoPool
-         const payoutBeforeFee = yesPool - newYesPool
-         const feeAmount = payoutBeforeFee * 0.02
-         return {
-          payout: payoutBeforeFee - feeAmount,
-          avgPrice: (payoutBeforeFee - feeAmount) / sharesToSell,
-          fee: feeAmount
-         }
+        Y = noPool
+        N = yesPool
+      }
+      
+      const a = 1.0
+      const b = Y + N - sharesToSell
+      const c = Y * (N - sharesToSell) - k
+      const discriminant = (b * b) - (4 * a * c)
+      
+      if (discriminant < 0) {
+        return {
+          type: 'SELL',
+          error: 'La cantidad es demasiado alta para vender',
+          payout: 0,
+          avgPrice: 0,
+          fee: 0,
+          finalPrice: currentPrice,
+          priceImpact: 0
+        }
+      }
+      
+      const swapAmount = (-b + Math.sqrt(discriminant)) / (2 * a)
+      
+      if (swapAmount < 0 || swapAmount > sharesToSell) {
+        return {
+          type: 'SELL',
+          error: 'Error en el cálculo de venta',
+          payout: 0,
+          avgPrice: 0,
+          fee: 0,
+          finalPrice: currentPrice,
+          priceImpact: 0
+        }
+      }
+      
+      const payoutBeforeFee = sharesToSell - swapAmount
+      const fee = payoutBeforeFee * FEE_RATE
+      const payoutAfterFee = payoutBeforeFee - fee
+      
+      if (payoutAfterFee <= 0) {
+        return {
+          type: 'SELL',
+          error: 'El monto de venta es muy bajo',
+          payout: 0,
+          avgPrice: 0,
+          fee: 0,
+          finalPrice: currentPrice,
+          priceImpact: 0
+        }
+      }
+      
+      let newYesPool, newNoPool
+      
+      if (side === 'YES') {
+        newYesPool = yesPool + swapAmount
+        newNoPool = k / newYesPool
+      } else {
+        newNoPool = noPool + swapAmount
+        newYesPool = k / newNoPool
+      }
+      
+      const avgPrice = payoutAfterFee / sharesToSell
+      const newTotalPool = newYesPool + newNoPool
+      const finalPrice = side === 'YES' 
+        ? newNoPool / newTotalPool 
+        : newYesPool / newTotalPool
+      const priceImpact = ((finalPrice - currentPrice) / currentPrice) * 100
+
+      return {
+        type: 'SELL',
+        payout: payoutAfterFee,
+        avgPrice: avgPrice,
+        fee: fee,
+        finalPrice: finalPrice,
+        priceImpact: priceImpact
       }
     }
-  }, [amount, market.yes_pool, market.no_pool, side, mode])
+  }, [amount, market.yes_pool, market.no_pool, side, mode, currentPrice])
 
   const calculateMaxPrice = useCallback(() => {
     const tolerance = slippageTolerance / 100
@@ -213,7 +287,6 @@ export default function TradeModal({ market, side, onClose }) {
         className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto scrollable-container"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
@@ -231,26 +304,22 @@ export default function TradeModal({ market, side, onClose }) {
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors tap-feedback no-select"
+            aria-label="Cerrar"
           >
             <X size={24} className="text-gray-600" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-6">
-          {/* Market Question */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="font-medium text-gray-900 leading-snug">{market.question}</p>
           </div>
 
-          {/* Mode Toggle */}
           <div className="grid grid-cols-2 gap-2 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setMode('BUY')}
               className={`py-2.5 rounded-md font-semibold transition-all tap-feedback no-select ${
-                mode === 'BUY'
-                  ? 'bg-white shadow-sm text-gray-900'
-                  : 'text-gray-600'
+                mode === 'BUY' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'
               }`}
             >
               Comprar
@@ -258,20 +327,15 @@ export default function TradeModal({ market, side, onClose }) {
             <button
               onClick={() => setMode('SELL')}
               className={`py-2.5 rounded-md font-semibold transition-all tap-feedback no-select ${
-                mode === 'SELL'
-                  ? 'bg-white shadow-sm text-gray-900'
-                  : 'text-gray-600'
+                mode === 'SELL' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'
               }`}
             >
               Vender
             </button>
           </div>
 
-          {/* Current Price */}
           <div className={`rounded-xl p-4 border-2 ${
-            side === 'YES'
-              ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-rose-50 border-rose-200'
+            side === 'YES' ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'
           }`}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">Precio Actual</span>
@@ -288,7 +352,6 @@ export default function TradeModal({ market, side, onClose }) {
             </div>
           </div>
 
-          {/* Amount Input */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               {mode === 'BUY' ? 'Cantidad a invertir (USD)' : 'Tokens a vender'}
@@ -314,7 +377,7 @@ export default function TradeModal({ market, side, onClose }) {
 
             <div className="flex justify-between items-center mt-2.5 text-sm">
               <span className="text-gray-600">
-                {mode === 'BUY' ? 'Saldo:' : 'Tienes:'}
+                {mode === 'BUY' ? 'Saldo disponible:' : 'Acciones disponibles:'}
               </span>
               <button
                 onClick={() => setAmount(mode === 'BUY' ? profile?.balance.toString() : userShares.toString())}
@@ -328,59 +391,111 @@ export default function TradeModal({ market, side, onClose }) {
             </div>
           </div>
 
-          {/* Estimated Return */}
-          {estimatedReturn && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          {estimatedReturn && !estimatedReturn.error && (
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-3">
-                <Info size={16} className="text-polyblue" />
-                <span className="text-sm font-bold text-gray-700">Estimación CPMM</span>
+                <div className="w-8 h-8 bg-polyblue rounded-lg flex items-center justify-center">
+                  <Info size={18} className="text-white" strokeWidth={2.5} />
+                </div>
+                <span className="text-sm font-bold text-gray-900">Resumen de la Orden</span>
               </div>
               
-              {mode === 'BUY' ? (
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Recibirás:</span>
-                    <span className="font-bold text-gray-900">{estimatedReturn.shares.toFixed(2)} tokens</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Precio promedio:</span>
-                    <span className="font-bold text-gray-900">{(estimatedReturn.avgPrice * 100).toFixed(2)}¢</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Fee (2%):</span>
-                    <span className="font-bold text-red-600">-${estimatedReturn.fee.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-blue-200">
-                    <span className="text-gray-600">Prob. implícita:</span>
-                    <span className="font-bold text-polyblue">{estimatedReturn.impliedProbability.toFixed(1)}%</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Recibirás:</span>
-                    <span className="font-bold text-green-600">${estimatedReturn.payout.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Precio promedio:</span>
-                    <span className="font-bold text-gray-900">{(estimatedReturn.avgPrice * 100).toFixed(2)}¢</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Fee (2%):</span>
-                    <span className="font-bold text-red-600">-${estimatedReturn.fee.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-2.5 text-sm">
+                {mode === 'BUY' ? (
+                  <>
+                    <div className="flex justify-between items-center py-2 border-b border-blue-200">
+                      <span className="text-gray-700 font-medium">Recibirás:</span>
+                      <span className="font-bold text-gray-900 text-base">
+                        {estimatedReturn.shares.toFixed(2)} tokens de {side}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Precio promedio:</span>
+                      <span className="font-bold text-gray-900">
+                        {(estimatedReturn.avgPrice * 100).toFixed(2)}¢
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Fee (2%):</span>
+                      <span className="font-bold text-red-600">
+                        -${estimatedReturn.fee.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-blue-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-700">Nuevo precio {side}:</span>
+                        <span className="font-bold text-polyblue text-base">
+                          {(estimatedReturn.finalPrice * 100).toFixed(2)}¢
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700 text-xs">Price Impact:</span>
+                        <span className={`font-bold text-xs ${
+                          estimatedReturn.priceImpact > 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {estimatedReturn.priceImpact > 0 ? '+' : ''}{estimatedReturn.priceImpact.toFixed(2)}%
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center py-2 border-b border-blue-200">
+                      <span className="text-gray-700 font-medium">Recibirás:</span>
+                      <span className="font-bold text-green-600 text-lg">
+                        ${estimatedReturn.payout.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Precio promedio:</span>
+                      <span className="font-bold text-gray-900">
+                        {(estimatedReturn.avgPrice * 100).toFixed(2)}¢
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Fee (2%):</span>
+                      <span className="font-bold text-red-600">
+                        -${estimatedReturn.fee.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-blue-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-700">Nuevo precio {side}:</span>
+                        <span className="font-bold text-polyblue text-base">
+                          {(estimatedReturn.finalPrice * 100).toFixed(2)}¢
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700 text-xs">Price Impact:</span>
+                        <span className={`font-bold text-xs ${
+                          estimatedReturn.priceImpact < 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {estimatedReturn.priceImpact > 0 ? '+' : ''}{estimatedReturn.priceImpact.toFixed(2)}%
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Slippage Tolerance */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          {estimatedReturn?.error && (
+            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle size={20} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-yellow-900 font-semibold text-sm mb-1">Advertencia</p>
+                <p className="text-yellow-800 text-sm">{estimatedReturn.error}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-gray-700">
                 Tolerancia de Slippage
               </label>
-              <span className="text-sm font-bold text-yellow-700">
+              <span className="text-sm font-bold text-polyblue">
                 {slippageTolerance}%
               </span>
             </div>
@@ -391,42 +506,60 @@ export default function TradeModal({ market, side, onClose }) {
               step="0.5"
               value={slippageTolerance}
               onChange={(e) => setSlippageTolerance(parseFloat(e.target.value))}
-              className="w-full"
+              className="w-full accent-polyblue"
               style={{ touchAction: 'none' }}
             />
             <div className="text-xs text-gray-600 mt-2">
               {mode === 'BUY' ? (
-                <p>Precio máximo: <strong>{(calculateMaxPrice() * 100).toFixed(2)}¢</strong></p>
+                <p>Precio máximo aceptado: <strong className="text-gray-900">{(calculateMaxPrice() * 100).toFixed(2)}¢</strong></p>
               ) : (
-                <p>Precio mínimo: <strong>{(calculateMinPrice() * 100).toFixed(2)}¢</strong></p>
+                <p>Precio mínimo aceptado: <strong className="text-gray-900">{(calculateMinPrice() * 100).toFixed(2)}¢</strong></p>
               )}
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3">
               <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-red-700 text-sm flex-1">{error}</p>
+              <div className="flex-1">
+                <p className="text-red-900 font-semibold text-sm mb-1">Error</p>
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
             </div>
           )}
 
-          {/* Action Button */}
+          {dailyMovesRemaining !== null && dailyMovesRemaining <= 5 && dailyMovesRemaining > 0 && (
+            <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-3 flex items-start gap-2">
+              <AlertCircle size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+              <p className="text-orange-900 text-xs flex-1">
+                <strong>Cuidado:</strong> Solo te quedan {dailyMovesRemaining} movimientos hoy. Úsalos sabiamente.
+              </p>
+            </div>
+          )}
+
           <button
             onClick={handleTrade}
-            disabled={loading || !amount || parseFloat(amount) <= 0 || dailyMovesRemaining === 0}
-            className={`w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed no-select ${
+            disabled={
+              loading || 
+              !amount || 
+              parseFloat(amount) <= 0 || 
+              dailyMovesRemaining === 0 || 
+              estimatedReturn?.error
+            }
+            className={`w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg no-select ${
               mode === 'BUY'
                 ? side === 'YES'
-                  ? 'bg-polygreen hover:bg-green-700 active:bg-green-800 text-white shadow-lg shadow-green-500/20'
-                  : 'bg-polyred hover:bg-red-700 active:bg-red-800 text-white shadow-lg shadow-red-500/20'
-                : 'bg-gray-900 hover:bg-gray-800 active:bg-gray-950 text-white shadow-lg shadow-gray-500/20'
+                  ? 'bg-polygreen hover:bg-green-700 active:bg-green-800 text-white shadow-green-500/30'
+                  : 'bg-polyred hover:bg-red-700 active:bg-red-800 text-white shadow-red-500/30'
+                : 'bg-gray-900 hover:bg-gray-800 active:bg-gray-950 text-white shadow-gray-500/30'
             }`}
           >
             {loading
               ? 'Procesando...'
               : dailyMovesRemaining === 0
-              ? 'Sin movimientos disponibles'
+              ? 'Sin movimientos disponibles hoy'
+              : estimatedReturn?.error
+              ? 'Cantidad inválida'
               : mode === 'BUY'
               ? `Comprar ${side}`
               : `Vender ${side}`

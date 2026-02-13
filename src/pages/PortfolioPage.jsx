@@ -69,7 +69,7 @@ export default function PortfolioPage() {
 
         // Calcular valor actual
         const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-        const pool = share.side === 'YES' ? parseFloat(market.yes_pool) : parseFloat(market.no_pool)
+        const pool = share.side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
         const currentPrice = pool / totalPool
 
         // Calcular costo promedio

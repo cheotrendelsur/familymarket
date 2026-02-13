@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { TrendingUp, AlertCircle, Lock } from 'lucide-react'
+import { TrendingUp, AlertCircle, Lock, Info } from 'lucide-react'
 
 export default function MarketPage() {
   const { profile, refreshProfile } = useAuth()
@@ -118,7 +118,8 @@ export default function MarketPage() {
 
   const calculatePrice = (market, side) => {
     const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-    const pool = side === 'YES' ? parseFloat(market.yes_pool) : parseFloat(market.no_pool)
+    // CORRECCIÓN CPMM: El precio lo define la piscina CONTRARIA
+    const pool = side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
     return pool / totalPool
   }
 
@@ -189,6 +190,103 @@ export default function MarketPage() {
     }
   }
 
+  const currentPrice = selectedMarket ? calculatePrice(selectedMarket, tradeSide) : 0
+  const isMarketClosed = selectedMarket?.closed || false
+
+  const estimatedReturn = useMemo(() => {
+    if (!selectedMarket || !amount || parseFloat(amount) <= 0) return null
+
+    const yesPool = parseFloat(selectedMarket.yes_pool)
+    const noPool = parseFloat(selectedMarket.no_pool)
+    const k = yesPool * noPool
+    const FEE_RATE = 0.02
+
+    if (tradeMode === 'BUY') {
+      const investment = parseFloat(amount)
+      const fee = investment * FEE_RATE
+      const investmentAfterFee = investment - fee
+
+      const sharesBase = investmentAfterFee
+      let sharesFromSwap = 0
+      let finalPrice = 0
+
+      if (tradeSide === 'YES') {
+        const newNoPool = noPool + investmentAfterFee
+        const newYesPool = k / newNoPool
+        sharesFromSwap = yesPool - newYesPool
+        finalPrice = newNoPool / (newYesPool + newNoPool)
+      } else {
+        const newYesPool = yesPool + investmentAfterFee
+        const newNoPool = k / newYesPool
+        sharesFromSwap = noPool - newNoPool
+        finalPrice = newYesPool / (newYesPool + newNoPool)
+      }
+
+      const totalShares = sharesBase + sharesFromSwap
+      const avgPrice = investment / totalShares
+      const priceImpact = ((finalPrice - currentPrice) / currentPrice) * 100
+
+      return {
+        type: 'BUY',
+        shares: totalShares,
+        avgPrice: avgPrice,
+        fee: fee,
+        finalPrice: finalPrice,
+        priceImpact: priceImpact
+      }
+
+    } else {
+      const sharesToSell = parseFloat(amount)
+      let Y, N
+      if (tradeSide === 'YES') {
+        Y = yesPool
+        N = noPool
+      } else {
+        Y = noPool
+        N = yesPool
+      }
+      
+      const a = 1.0
+      const b = Y + N - sharesToSell
+      const c = Y * (N - sharesToSell) - k
+      const discriminant = (b * b) - (4 * a * c)
+      
+      if (discriminant < 0) return { error: 'La cantidad es demasiado alta para vender' }
+      
+      const swapAmount = (-b + Math.sqrt(discriminant)) / (2 * a)
+      if (swapAmount < 0 || swapAmount > sharesToSell) return { error: 'Error en el cálculo' }
+      
+      const payoutBeforeFee = sharesToSell - swapAmount
+      const fee = payoutBeforeFee * FEE_RATE
+      const payoutAfterFee = payoutBeforeFee - fee
+      
+      if (payoutAfterFee <= 0) return { error: 'El monto de venta es muy bajo' }
+      
+      let newYesPool, newNoPool
+      if (tradeSide === 'YES') {
+        newYesPool = yesPool + swapAmount
+        newNoPool = k / newYesPool
+      } else {
+        newNoPool = noPool + swapAmount
+        newYesPool = k / newNoPool
+      }
+      
+      const avgPrice = payoutAfterFee / sharesToSell
+      const newTotalPool = newYesPool + newNoPool
+      const finalPrice = tradeSide === 'YES' ? newNoPool / newTotalPool : newYesPool / newTotalPool
+      const priceImpact = ((finalPrice - currentPrice) / currentPrice) * 100
+
+      return {
+        type: 'SELL',
+        payout: payoutAfterFee,
+        avgPrice: avgPrice,
+        fee: fee,
+        finalPrice: finalPrice,
+        priceImpact: priceImpact
+      }
+    }
+  }, [amount, selectedMarket, tradeSide, tradeMode, currentPrice])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen-safe">
@@ -216,9 +314,7 @@ export default function MarketPage() {
     )
   }
 
-  const currentPrice = selectedMarket ? calculatePrice(selectedMarket, tradeSide) : 0
-  const isMarketClosed = selectedMarket?.closed || false
-
+  
   return (
     <div className="min-h-screen-safe bg-polygray-bg pb-6">
       {/* ============================================= */}
@@ -491,14 +587,93 @@ export default function MarketPage() {
                 <span className="text-gray-600">
                   {tradeMode === 'BUY' ? 'Saldo:' : 'Tienes:'}
                 </span>
-                <span className="font-semibold text-gray-900">
+                <button
+                  onClick={() => setAmount(tradeMode === 'BUY' ? profile?.balance.toString() : userShares[tradeSide].toString())}
+                  className="font-semibold text-polyblue hover:underline tap-feedback"
+                >
                   {tradeMode === 'BUY'
                     ? `$${profile?.balance.toFixed(2)}`
                     : `${userShares[tradeSide].toFixed(2)} ${tradeSide}`
                   }
-                </span>
+                </button>
               </div>
             </div>
+            
+            {estimatedReturn && !estimatedReturn.error && (
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-polyblue rounded-lg flex items-center justify-center">
+                    <Info size={18} className="text-white" strokeWidth={2.5} />
+                  </div>
+                  <span className="text-sm font-bold text-gray-900">Resumen de la Orden</span>
+                </div>
+                
+                <div className="space-y-2.5 text-sm">
+                  {tradeMode === 'BUY' ? (
+                    <>
+                      <div className="flex justify-between items-center py-2 border-b border-blue-200">
+                        <span className="text-gray-700 font-medium">Recibirás:</span>
+                        <span className="font-bold text-gray-900 text-base">
+                          {estimatedReturn.shares.toFixed(2)} tokens {tradeSide}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Precio promedio:</span>
+                        <span className="font-bold text-gray-900">
+                          {(estimatedReturn.avgPrice * 100).toFixed(2)}¢
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Fee (2%):</span>
+                        <span className="font-bold text-red-600">
+                          -${estimatedReturn.fee.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="pt-2 mt-2 border-t border-blue-200">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700">Nuevo precio {tradeSide}:</span>
+                          <span className="font-bold text-polyblue text-base">
+                            {(estimatedReturn.finalPrice * 100).toFixed(2)}¢
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center py-2 border-b border-blue-200">
+                        <span className="text-gray-700 font-medium">Recibirás:</span>
+                        <span className="font-bold text-green-600 text-lg">
+                          ${estimatedReturn.payout.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Precio promedio:</span>
+                        <span className="font-bold text-gray-900">
+                          {(estimatedReturn.avgPrice * 100).toFixed(2)}¢
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Fee (2%):</span>
+                        <span className="font-bold text-red-600">
+                          -${estimatedReturn.fee.toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* NUEVO: ALERTA DE ERROR MATEMÁTICO (EJ: MUCHA VENTA) */}
+            {estimatedReturn?.error && (
+              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle size={20} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-yellow-900 font-semibold text-sm mb-1">Advertencia</p>
+                  <p className="text-yellow-800 text-sm">{estimatedReturn.error}</p>
+                </div>
+              </div>
+            )}
 
             {/* Error Message */}
             {tradeError && (
