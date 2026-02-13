@@ -138,6 +138,12 @@ export default function MarketPage() {
   const handleTrade = async () => {
     if (!selectedMarket || !amount || parseFloat(amount) <= 0) return
 
+    const confirmMessage = tradeMode === 'BUY' 
+      ? `¿Confirmas la COMPRA de tokens ${tradeSide} por $${amount}?` 
+      : `¿Confirmas la VENTA de ${amount} tokens ${tradeSide}?`;
+      
+    if (!window.confirm(confirmMessage)) return; // Si le da a Cancelar, aborta
+
     setTradeError(null)
     setTradeLoading(true)
 

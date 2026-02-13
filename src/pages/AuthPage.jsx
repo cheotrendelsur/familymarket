@@ -22,6 +22,13 @@ export default function AuthPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (isSignUp) {
+      if (!window.confirm(`¿Estás seguro de que deseas crear una nueva cuenta con el correo:\n${email}?`)) {
+        return; // Si el usuario le da a Cancelar, el código se detiene aquí
+      }
+    }
+
     setError(null)
     setSuccess(null)
     setLoading(true)

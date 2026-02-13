@@ -226,6 +226,13 @@ export default function TradeModal({ market, side, onClose }) {
   }, [currentPrice, slippageTolerance])
 
   const handleTrade = async () => {
+
+    const confirmMessage = mode === 'BUY' 
+      ? `¿Confirmas la COMPRA de tokens ${side} por $${amount}?` 
+      : `¿Confirmas la VENTA de ${amount} tokens ${side}?`;
+      
+    if (!window.confirm(confirmMessage)) return; // Si le da a Cancelar, no hace nada
+
     setError(null)
     setLoading(true)
 
