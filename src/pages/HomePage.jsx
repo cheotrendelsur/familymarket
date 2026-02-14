@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
-import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle } from 'lucide-react'
+import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle, ChevronDown } from 'lucide-react'
 import MarketCard from '../components/MarketCard'
 import TradeModal from '../components/TradeModal'
 
@@ -12,6 +12,7 @@ export default function HomePage({ setIsModalOpen }) {
   const [refreshing, setRefreshing] = useState(false)
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [tradeSide, setTradeSide] = useState(null)
+  const [expandedTopics, setExpandedTopics] = useState({})
 
   useEffect(() => {
     fetchAllData()
@@ -169,6 +170,10 @@ export default function HomePage({ setIsModalOpen }) {
     fetchMarkets()
   }, [])
 
+  const toggleTopic = (topic) => {
+    setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen-safe">
@@ -179,6 +184,18 @@ export default function HomePage({ setIsModalOpen }) {
       </div>
     )
   }
+
+  const particularMarkets = activeMarkets.filter(m => !m.group_topic)
+  
+  const multipleMarketsGroups = activeMarkets
+    .filter(m => m.group_topic)
+    .reduce((acc, market) => {
+      if (!acc[market.group_topic]) {
+        acc[market.group_topic] = []
+      }
+      acc[market.group_topic].push(market)
+      return acc
+    }, {})
 
   return (
     <div className="min-h-screen-safe bg-polygray-bg pb-6">
@@ -212,15 +229,82 @@ export default function HomePage({ setIsModalOpen }) {
               <p className="text-gray-600">No hay mercados activos en este momento</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeMarkets.map((market) => (
-                <MarketCard
-                  key={market.id}
-                  market={market}
-                  onClickYes={(m) => handleTradeClick(m, 'YES')}
-                  onClickNo={(m) => handleTradeClick(m, 'NO')}
-                />
-              ))}
+            <div className="space-y-8">
+              
+              {/* BLOQUE A: MERCADOS PARTICULARES */}
+              {particularMarkets.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
+                    Mercados Particulares
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {particularMarkets.map((market) => (
+                      <MarketCard
+                        key={market.id}
+                        market={market}
+                        onClickYes={(m) => handleTradeClick(m, 'YES')}
+                        onClickNo={(m) => handleTradeClick(m, 'NO')}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* BLOQUE B: MERCADOS MÚLTIPLES */}
+              {/* === BLOQUE B: MERCADOS MÚLTIPLES (ACORDEÓN) === */}
+              {Object.keys(multipleMarketsGroups).length > 0 && (
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
+                    Mercados Múltiples
+                  </h3>
+                  <div className="space-y-4">
+                    {Object.entries(multipleMarketsGroups).map(([topic, markets]) => (
+                      <div key={topic} className="bg-white border-2 border-polyblue/20 rounded-xl overflow-hidden shadow-sm transition-all">
+                        
+                        {/* BOTÓN DESPLEGABLE (TÓPICO) */}
+                        <button
+                          onClick={() => toggleTopic(topic)}
+                          className="w-full flex items-center justify-between p-5 bg-blue-50/50 hover:bg-blue-50 transition-colors tap-feedback"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-polyblue text-white rounded-xl flex items-center justify-center font-bold shadow-md text-lg">
+                              {markets.length}
+                            </div>
+                            <div className="text-left">
+                              <h4 className="text-lg font-bold text-gray-900">{topic}</h4>
+                              <p className="text-sm text-gray-500">
+                                {expandedTopics[topic] ? 'Ocultar opciones' : 'Toca para ver y apostar'}
+                              </p>
+                            </div>
+                          </div>
+                          <ChevronDown 
+                            size={24} 
+                            className={`text-polyblue transform transition-transform duration-300 ${expandedTopics[topic] ? 'rotate-180' : ''}`} 
+                          />
+                        </button>
+                        
+                        {/* LAS TARJETAS OCULTAS */}
+                        {expandedTopics[topic] && (
+                          <div className="p-5 border-t-2 border-polyblue/10 bg-gray-50/50">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {markets.map((market) => (
+                                <MarketCard
+                                  key={market.id}
+                                  market={market}
+                                  onClickYes={(m) => handleTradeClick(m, 'YES')}
+                                  onClickNo={(m) => handleTradeClick(m, 'NO')}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>

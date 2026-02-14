@@ -235,9 +235,18 @@ export default function PortfolioPage() {
                   className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow"
                 >
                   {/* Market Question */}
+                  {/* Market Question */}
                   <div className="mb-4">
                     <h3 className="font-bold text-gray-900 leading-snug mb-2">
-                      {position.market.question}
+                      {position.market.group_topic ? (
+                        <>
+                          <span className="text-polyblue">🎯 {position.market.group_topic}</span>
+                          <span className="text-gray-400 mx-2">—</span>
+                          {position.market.question}
+                        </>
+                      ) : (
+                        position.market.question
+                      )}
                     </h3>
                     <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${
                       position.side === 'YES'
@@ -320,9 +329,18 @@ export default function PortfolioPage() {
                   className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm opacity-90"
                 >
                   {/* Market Question */}
+                  {/* Market Question */}
                   <div className="mb-4">
                     <h3 className="font-bold text-gray-700 leading-snug mb-2">
-                      {position.market.question}
+                      {position.market.group_topic ? (
+                        <>
+                          <span className="text-gray-500">🎯 {position.market.group_topic}</span>
+                          <span className="text-gray-400 mx-2">—</span>
+                          {position.market.question}
+                        </>
+                      ) : (
+                        position.market.question
+                      )}
                     </h3>
                     <div className="flex items-center gap-2">
                       <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { TrendingUp, AlertCircle, Lock, Info } from 'lucide-react'
+import { TrendingUp, AlertCircle, Lock, Info, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function MarketPage() {
@@ -21,6 +21,8 @@ export default function MarketPage() {
   const [tradeLoading, setTradeLoading] = useState(false)
   const [tradeError, setTradeError] = useState(null)
   const [slippageTolerance, setSlippageTolerance] = useState(5)
+
+  const [expandedTopics, setExpandedTopics] = useState({})
 
   useEffect(() => {
     fetchMarkets()
@@ -345,7 +347,20 @@ export default function MarketPage() {
     )
   }
 
+  const toggleTopic = (topic) => {
+    setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
+  }
+
+  const particularMarkets = activeMarkets.filter(m => !m.group_topic)
   
+  const multipleMarketsGroups = activeMarkets
+    .filter(m => m.group_topic)
+    .reduce((acc, market) => {
+      if (!acc[market.group_topic]) acc[market.group_topic] = []
+      acc[market.group_topic].push(market)
+      return acc
+    }, {})
+
   return (
     <div className="min-h-screen-safe bg-polygray-bg pb-6">
       {/* ============================================= */}
@@ -425,42 +440,108 @@ export default function MarketPage() {
       <div className="bg-white p-4 border-b border-gray-200">
         <div className="max-w-7xl mx-auto">
           {/* Mercados Activos */}
+          {/* Mercados Activos */}
           {activeMarkets.length > 0 && (
-            <>
+            <div className="mb-6">
               <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
                 Activos
               </h3>
-              <div className="space-y-2 mb-6">
-                {activeMarkets.map((market) => {
-                  const yesPrice = calculatePrice(market, 'YES')
-                  const isSelected = selectedMarket?.id === market.id
+              
+              <div className="space-y-4">
+                {/* === BLOQUE A: PARTICULARES === */}
+                {particularMarkets.length > 0 && (
+                  <div className="space-y-2">
+                    {particularMarkets.map((market) => {
+                      const yesPrice = calculatePrice(market, 'YES')
+                      const isSelected = selectedMarket?.id === market.id
 
-                  return (
-                    <button
-                      key={market.id}
-                      onClick={() => setSelectedMarket(market)}
-                      className={`w-full text-left bg-white rounded-lg p-3 border-2 transition-all ${
-                        isSelected
-                          ? 'border-polyblue shadow-md'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-sm text-gray-900 flex-1 pr-4">
-                          {market.question}
-                        </p>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-polygreen">
-                            {(yesPrice * 100).toFixed(0)}%
+                      return (
+                        <button
+                          key={market.id}
+                          onClick={() => setSelectedMarket(market)}
+                          className={`w-full text-left bg-white rounded-lg p-3 border-2 transition-all ${
+                            isSelected
+                              ? 'border-polyblue shadow-md'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-sm text-gray-900 flex-1 pr-4">
+                              {market.question}
+                            </p>
+                            <div className="text-right">
+                              <div className="text-lg font-bold text-polygreen">
+                                {(yesPrice * 100).toFixed(0)}%
+                              </div>
+                              <div className="text-xs text-gray-500">YES</div>
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">YES</div>
-                        </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* === BLOQUE B: MÚLTIPLES (ACORDEÓN) === */}
+                {Object.keys(multipleMarketsGroups).length > 0 && (
+                  <div className="space-y-3 mt-4">
+                    {Object.entries(multipleMarketsGroups).map(([topic, markets]) => (
+                      <div key={topic} className="bg-white border-2 border-polyblue/20 rounded-xl overflow-hidden shadow-sm transition-all">
+                        
+                        <button
+                          onClick={() => toggleTopic(topic)}
+                          className="w-full flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-50 transition-colors tap-feedback"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-polyblue text-white rounded-lg flex items-center justify-center font-bold shadow-sm text-sm">
+                              {markets.length}
+                            </div>
+                            <h4 className="font-bold text-gray-900 text-sm text-left">{topic}</h4>
+                          </div>
+                          <ChevronDown 
+                            size={20} 
+                            className={`text-polyblue transform transition-transform duration-300 ${expandedTopics[topic] ? 'rotate-180' : ''}`} 
+                          />
+                        </button>
+                        
+                        {expandedTopics[topic] && (
+                          <div className="p-3 border-t-2 border-polyblue/10 bg-gray-50/50 space-y-2">
+                            {markets.map((market) => {
+                              const yesPrice = calculatePrice(market, 'YES')
+                              const isSelected = selectedMarket?.id === market.id
+
+                              return (
+                                <button
+                                  key={market.id}
+                                  onClick={() => setSelectedMarket(market)}
+                                  className={`w-full text-left bg-white rounded-lg p-3 border-2 transition-all ${
+                                    isSelected
+                                      ? 'border-polyblue shadow-md'
+                                      : 'border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-medium text-sm text-gray-900 flex-1 pr-4">
+                                      {market.question}
+                                    </p>
+                                    <div className="text-right">
+                                      <div className="text-lg font-bold text-polygreen">
+                                        {(yesPrice * 100).toFixed(0)}%
+                                      </div>
+                                      <div className="text-xs text-gray-500">YES</div>
+                                    </div>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </button>
-                  )
-                })}
+                    ))}
+                  </div>
+                )}
               </div>
-            </>
+            </div>
           )}
 
           {/* Mercados Cerrados */}

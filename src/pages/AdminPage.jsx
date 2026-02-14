@@ -18,6 +18,10 @@ export default function AdminPage() {
   const [createError, setCreateError] = useState(null)
   const [createSuccess, setCreateSuccess] = useState(null)
 
+  const [isMultiple, setIsMultiple] = useState(false)
+  const [groupTopic, setGroupTopic] = useState('')
+  const [multipleOptions, setMultipleOptions] = useState(['', ''])
+
   useEffect(() => {
     if (profile?.is_admin) {
       fetchAllMarkets()
@@ -47,21 +51,40 @@ export default function AdminPage() {
     setCreateLoading(true)
 
     try {
-      if (!newMarket.question.trim()) {
-        throw new Error('La pregunta es requerida')
+      if (isMultiple) {
+        if (!groupTopic.trim()) throw new Error('El tópico general es requerido')
+        const validOptions = multipleOptions.filter(opt => opt.trim() !== '')
+        if (validOptions.length < 2) throw new Error('Debes ingresar al menos 2 opciones')
+
+        for (const opt of validOptions) {
+          const { error: createErr } = await supabase.rpc('create_market_with_liquidity', {
+            p_question: opt.trim(),
+            p_description: newMarket.description.trim() || null,
+            p_image_url: newMarket.image_url.trim() || null
+          })
+          if (createErr) throw createErr
+
+          await supabase
+            .from('markets')
+            .update({ group_topic: groupTopic.trim() })
+            .eq('question', opt.trim())
+        }
+        setCreateSuccess(`✅ ${validOptions.length} submercados creados bajo el tópico: ${groupTopic}`)
+      } else {
+        if (!newMarket.question.trim()) throw new Error('La pregunta es requerida')
+        const { error } = await supabase.rpc('create_market_with_liquidity', {
+          p_question: newMarket.question.trim(),
+          p_description: newMarket.description.trim() || null,
+          p_image_url: newMarket.image_url.trim() || null
+        })
+        if (error) throw error
+        setCreateSuccess('✅ Mercado creado exitosamente')
       }
 
-      // Usar la nueva función RPC que inicializa con 1200/1200
-      const { data, error } = await supabase.rpc('create_market_with_liquidity', {
-        p_question: newMarket.question.trim(),
-        p_description: newMarket.description.trim() || null,
-        p_image_url: newMarket.image_url.trim() || null
-      })
-
-      if (error) throw error
-
-      setCreateSuccess('✅ Mercado creado exitosamente con liquidez CPMM de 1200 YES / 1200 NO tokens')
       setNewMarket({ question: '', description: '', image_url: '' })
+      setGroupTopic('')
+      setMultipleOptions(['', ''])
+      setIsMultiple(false)
       fetchAllMarkets()
       
       setTimeout(() => setCreateSuccess(null), 5000)
@@ -152,20 +175,88 @@ export default function AdminPage() {
           )}
 
           <form onSubmit={handleCreateMarket} className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                Pregunta del Mercado *
-              </label>
-              <input
-                type="text"
-                value={newMarket.question}
-                onChange={(e) => setNewMarket({ ...newMarket, question: e.target.value })}
-                placeholder="¿Lloverá mañana en Miami?"
-                className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-polyblue focus:ring-4 focus:ring-polyblue focus:ring-opacity-10 outline-none transition"
-                style={{ fontSize: '16px' }}
-                required
-              />
+            <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-200">
+              <div>
+                <h3 className="font-bold text-gray-900">Mercado Múltiple</h3>
+                <p className="text-xs text-gray-500">Agrupa varias opciones bajo un mismo tema</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMultiple(!isMultiple)}
+                className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors shadow-inner ${isMultiple ? 'bg-polyblue' : 'bg-gray-300'}`}
+              >
+                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${isMultiple ? 'translate-x-6' : 'translate-x-0'}`}></div>
+              </button>
             </div>
+
+            {isMultiple ? (
+              <div className="space-y-4 bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Tópico General * (Ej: ¿Quién comerá más?)
+                  </label>
+                  <input
+                    type="text"
+                    value={groupTopic}
+                    onChange={(e) => setGroupTopic(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-polyblue focus:ring-4 focus:ring-polyblue focus:ring-opacity-10 outline-none transition"
+                    required={isMultiple}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-gray-700">
+                    Opciones / Participantes *
+                  </label>
+                  {multipleOptions.map((opt, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={(e) => {
+                          const newOpts = [...multipleOptions];
+                          newOpts[idx] = e.target.value;
+                          setMultipleOptions(newOpts);
+                        }}
+                        placeholder={`Opción ${idx + 1} (Ej: Papá)`}
+                        className="flex-1 px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-polyblue focus:ring-4 focus:ring-polyblue focus:ring-opacity-10 outline-none transition"
+                        required={isMultiple}
+                      />
+                      {multipleOptions.length > 2 && (
+                        <button 
+                          type="button" 
+                          onClick={() => setMultipleOptions(multipleOptions.filter((_, i) => i !== idx))} 
+                          className="px-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={24} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button 
+                    type="button" 
+                    onClick={() => setMultipleOptions([...multipleOptions, ''])} 
+                    className="text-polyblue font-bold text-sm flex items-center gap-1 mt-3 px-2 py-1 hover:bg-blue-100 rounded-lg transition-colors"
+                  >
+                    <Plus size={18} /> Agregar otra opción
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Pregunta del Mercado *
+                </label>
+                <input
+                  type="text"
+                  value={newMarket.question}
+                  onChange={(e) => setNewMarket({ ...newMarket, question: e.target.value })}
+                  placeholder="¿Lloverá mañana en Miami?"
+                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-polyblue focus:ring-4 focus:ring-polyblue focus:ring-opacity-10 outline-none transition"
+                  style={{ fontSize: '16px' }}
+                  required={!isMultiple}
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
