@@ -13,6 +13,7 @@ export default function HomePage({ setIsModalOpen }) {
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [tradeSide, setTradeSide] = useState(null)
   const [expandedTopics, setExpandedTopics] = useState({})
+  const [expandedClosedTopics, setExpandedClosedTopics] = useState({})
 
   useEffect(() => {
     fetchAllData()
@@ -173,6 +174,9 @@ export default function HomePage({ setIsModalOpen }) {
   const toggleTopic = (topic) => {
     setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
   }
+  const toggleClosedTopic = (topic) => {
+    setExpandedClosedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
+  }
 
   if (loading) {
     return (
@@ -193,6 +197,16 @@ export default function HomePage({ setIsModalOpen }) {
       if (!acc[market.group_topic]) {
         acc[market.group_topic] = []
       }
+      acc[market.group_topic].push(market)
+      return acc
+    }, {})
+
+  const particularClosedMarkets = closedMarkets.filter(m => !m.group_topic)
+  
+  const multipleClosedMarketsGroups = closedMarkets
+    .filter(m => m.group_topic)
+    .reduce((acc, market) => {
+      if (!acc[market.group_topic]) acc[market.group_topic] = []
       acc[market.group_topic].push(market)
       return acc
     }, {})
@@ -311,6 +325,7 @@ export default function HomePage({ setIsModalOpen }) {
       </div>
 
       {/* SECCIÓN 2: MERCADOS FINALIZADOS */}
+      {/* SECCIÓN 2: MERCADOS FINALIZADOS */}
       <div className="max-w-7xl mx-auto px-4 mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Mercados Finalizados</h2>
         
@@ -319,60 +334,137 @@ export default function HomePage({ setIsModalOpen }) {
             <p className="text-gray-500">Aún no hay mercados finalizados</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {closedMarkets.map((market) => {
-              const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-              const yesPrice = (parseFloat(market.yes_pool) / totalPool * 100).toFixed(1)
-              const noPrice = (parseFloat(market.no_pool) / totalPool * 100).toFixed(1)
+          <div className="space-y-8">
+            
+            {/* === BLOQUE A: CERRADOS PARTICULARES === */}
+            {particularClosedMarkets.length > 0 && (
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
+                  Mercados Particulares
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {particularClosedMarkets.map((market) => {
+                    const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
+                    const yesPrice = (parseFloat(market.yes_pool) / totalPool * 100).toFixed(1)
+                    const noPrice = (parseFloat(market.no_pool) / totalPool * 100).toFixed(1)
 
-              return (
-                <div
-                  key={market.id}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-80 hover:opacity-100 transition-opacity"
-                >
-                  <div className="p-4">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
+                    return (
+                      <div key={market.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-80 hover:opacity-100 transition-opacity">
+                        <div className="p-4">
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
+                            </div>
+                            <h3 className="font-semibold text-gray-700 leading-snug flex-1">
+                              {market.question}
+                            </h3>
+                          </div>
+                          <div className={`rounded-xl p-4 border-2 mb-3 ${market.outcome === 'YES' ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                            <div className="flex items-center justify-center gap-2">
+                              {market.outcome === 'YES' ? <CheckCircle size={24} className="text-polygreen" strokeWidth={2.5} /> : <XCircle size={24} className="text-polyred" strokeWidth={2.5} />}
+                              <span className={`text-2xl font-bold ${market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="text-center">
+                              <div className="text-gray-500">Precio Final YES</div>
+                              <div className="font-bold text-polygreen">{yesPrice}¢</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-gray-500">Precio Final NO</div>
+                              <div className="font-bold text-polyred">{noPrice}¢</div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <h3 className="font-semibold text-gray-700 leading-snug flex-1">
-                        {market.question}
-                      </h3>
-                    </div>
-
-                    <div className={`rounded-xl p-4 border-2 mb-3 ${
-                      market.outcome === 'YES'
-                        ? 'bg-emerald-50 border-emerald-300'
-                        : 'bg-rose-50 border-rose-300'
-                    }`}>
-                      <div className="flex items-center justify-center gap-2">
-                        {market.outcome === 'YES' ? (
-                          <CheckCircle size={24} className="text-polygreen" strokeWidth={2.5} />
-                        ) : (
-                          <XCircle size={24} className="text-polyred" strokeWidth={2.5} />
-                        )}
-                        <span className={`text-2xl font-bold ${
-                          market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'
-                        }`}>
-                          GANÓ {market.outcome}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="text-center">
-                        <div className="text-gray-500">Precio Final YES</div>
-                        <div className="font-bold text-polygreen">{yesPrice}¢</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-gray-500">Precio Final NO</div>
-                        <div className="font-bold text-polyred">{noPrice}¢</div>
-                      </div>
-                    </div>
-                  </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </div>
+            )}
+
+            {/* === BLOQUE B: CERRADOS MÚLTIPLES (ACORDEÓN) === */}
+            {Object.keys(multipleClosedMarketsGroups).length > 0 && (
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
+                  Mercados Múltiples
+                </h3>
+                <div className="space-y-4">
+                  {Object.entries(multipleClosedMarketsGroups).map(([topic, markets]) => (
+                    <div key={topic} className="bg-white border-2 border-gray-300 rounded-xl overflow-hidden shadow-sm transition-all opacity-90 hover:opacity-100">
+                      
+                      {/* BOTÓN DESPLEGABLE (GRIS PARA MERCADOS CERRADOS) */}
+                      <button
+                        onClick={() => toggleClosedTopic(topic)}
+                        className="w-full flex items-center justify-between p-5 bg-gray-100 hover:bg-gray-200 transition-colors tap-feedback"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-gray-500 text-white rounded-xl flex items-center justify-center font-bold shadow-md text-lg">
+                            {markets.length}
+                          </div>
+                          <div className="text-left">
+                            <h4 className="text-lg font-bold text-gray-900">{topic}</h4>
+                            <p className="text-sm text-gray-600">
+                              {expandedClosedTopics[topic] ? 'Ocultar resultados' : 'Toca para ver resultados'}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronDown 
+                          size={24} 
+                          className={`text-gray-600 transform transition-transform duration-300 ${expandedClosedTopics[topic] ? 'rotate-180' : ''}`} 
+                        />
+                      </button>
+                      
+                      {/* LAS TARJETAS OCULTAS */}
+                      {expandedClosedTopics[topic] && (
+                        <div className="p-5 border-t-2 border-gray-300 bg-gray-50/50">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {markets.map((market) => {
+                              const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
+                              const yesPrice = (parseFloat(market.yes_pool) / totalPool * 100).toFixed(1)
+                              const noPrice = (parseFloat(market.no_pool) / totalPool * 100).toFixed(1)
+
+                              return (
+                                <div key={market.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
+                                  <div className="p-4">
+                                    <div className="flex items-start gap-3 mb-3">
+                                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
+                                      </div>
+                                      <h3 className="font-semibold text-gray-700 leading-snug flex-1">
+                                        {market.question}
+                                      </h3>
+                                    </div>
+                                    <div className={`rounded-xl p-4 border-2 mb-3 ${market.outcome === 'YES' ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                                      <div className="flex items-center justify-center gap-2">
+                                        {market.outcome === 'YES' ? <CheckCircle size={24} className="text-polygreen" strokeWidth={2.5} /> : <XCircle size={24} className="text-polyred" strokeWidth={2.5} />}
+                                        <span className={`text-2xl font-bold ${market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div className="text-center">
+                                        <div className="text-gray-500">Precio Final YES</div>
+                                        <div className="font-bold text-polygreen">{yesPrice}¢</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="text-gray-500">Precio Final NO</div>
+                                        <div className="font-bold text-polyred">{noPrice}¢</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
       </div>
