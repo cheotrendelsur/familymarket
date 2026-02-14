@@ -343,7 +343,15 @@ export default function AdminPage() {
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-900 text-lg mb-1 leading-snug">
-                          {market.question}
+                          {market.group_topic ? (
+                            <>
+                              <span className="text-polyblue">🎯 {market.group_topic}</span>
+                              <span className="text-gray-400 mx-2">—</span>
+                              {market.question}
+                            </>
+                          ) : (
+                            market.question
+                          )}
                         </h3>
                         {market.description && (
                           <p className="text-sm text-gray-600 leading-relaxed">{market.description}</p>
