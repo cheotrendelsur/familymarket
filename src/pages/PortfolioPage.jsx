@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
-import { TrendingUp, TrendingDown, DollarSign, Briefcase, Zap, CheckCircle, XCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Briefcase, Zap, CheckCircle, XCircle, ChevronDown } from 'lucide-react'
 
 export default function PortfolioPage() {
   const { profile } = useAuth()
@@ -10,6 +10,17 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true)
   const [totalValue, setTotalValue] = useState(0)
   const [dailyMovesRemaining, setDailyMovesRemaining] = useState(null)
+
+  const [expandedTopics, setExpandedTopics] = useState({})
+  const [expandedClosedTopics, setExpandedClosedTopics] = useState({})
+
+  const toggleTopic = (topic) => {
+    setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
+  }
+
+  const toggleClosedTopic = (topic) => {
+    setExpandedClosedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
+  }
 
   useEffect(() => {
     fetchPortfolio()
@@ -26,10 +37,10 @@ export default function PortfolioPage() {
         .in('action', ['BUY', 'SELL'])
 
       if (error) throw error
-      setDailyMovesRemaining(25 - (count || 0))
+      setDailyMovesRemaining(60 - (count || 0))
     } catch (error) {
       console.error('Error al obtener movimientos diarios:', error)
-      setDailyMovesRemaining(25)
+      setDailyMovesRemaining(60)
     }
   }
 
@@ -164,6 +175,24 @@ export default function PortfolioPage() {
     )
   }
 
+  const particularActivePositions = activePositions.filter(p => !p.market.group_topic)
+  const multipleActivePositionsGroups = activePositions
+    .filter(p => p.market.group_topic)
+    .reduce((acc, pos) => {
+      if (!acc[pos.market.group_topic]) acc[pos.market.group_topic] = []
+      acc[pos.market.group_topic].push(pos)
+      return acc
+    }, {})
+
+  const particularClosedPositions = closedPositions.filter(p => !p.market.group_topic)
+  const multipleClosedPositionsGroups = closedPositions
+    .filter(p => p.market.group_topic)
+    .reduce((acc, pos) => {
+      if (!acc[pos.market.group_topic]) acc[pos.market.group_topic] = []
+      acc[pos.market.group_topic].push(pos)
+      return acc
+    }, {})
+
   return (
     <div className="min-h-screen-safe bg-polygray-bg px-4 py-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -185,7 +214,7 @@ export default function PortfolioPage() {
             }`}>
               <Zap size={16} strokeWidth={2.5} />
               <span>
-                {dailyMovesRemaining !== null ? dailyMovesRemaining : '...'}/25
+                {dailyMovesRemaining !== null ? dailyMovesRemaining : '...'}/60
               </span>
             </div>
           </div>
@@ -211,6 +240,9 @@ export default function PortfolioPage() {
         {/* ============================================= */}
         {/* TABLA 1: POSICIONES ACTIVAS */}
         {/* ============================================= */}
+        {/* ============================================= */}
+        {/* TABLA 1: POSICIONES ACTIVAS */}
+        {/* ============================================= */}
         <div>
           <div className="flex items-center gap-3 mb-4">
             <Briefcase size={24} className="text-gray-700" strokeWidth={2} />
@@ -228,80 +260,105 @@ export default function PortfolioPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {activePositions.map((position, index) => (
-                <div
-                  key={index}
-                  className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  {/* Market Question */}
-                  {/* Market Question */}
-                  <div className="mb-4">
-                    <h3 className="font-bold text-gray-900 leading-snug mb-2">
-                      {position.market.group_topic ? (
-                        <>
-                          <span className="text-polyblue">🎯 {position.market.group_topic}</span>
-                          <span className="text-gray-400 mx-2">—</span>
-                          {position.market.question}
-                        </>
-                      ) : (
-                        position.market.question
-                      )}
-                    </h3>
-                    <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${
-                      position.side === 'YES'
-                        ? 'bg-emerald-100 text-polygreen'
-                        : 'bg-rose-100 text-polyred'
-                    }`}>
-                      {position.side} • {position.shares.toFixed(2)} acciones
-                    </div>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Costo Prom.</div>
-                      <div className="font-bold text-gray-900 text-lg">
-                        {(position.avgCost * 100).toFixed(1)}¢
+            <div className="space-y-6">
+              
+              {/* === BLOQUE A: PARTICULARES === */}
+              {particularActivePositions.length > 0 && (
+                <div className="space-y-3">
+                  {particularActivePositions.map((position, index) => (
+                    <div key={index} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="mb-4">
+                        <h3 className="font-bold text-gray-900 leading-snug mb-2">{position.market.question}</h3>
+                        <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${position.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'}`}>
+                          {position.side} • {position.shares.toFixed(2)} acciones
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Costo Prom.</div>
+                          <div className="font-bold text-gray-900 text-lg">{(position.avgCost * 100).toFixed(1)}¢</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Precio Actual</div>
+                          <div className="font-bold text-gray-900 text-lg">{(position.currentPrice * 100).toFixed(1)}¢</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Valor Total</div>
+                          <div className="font-bold text-gray-900 text-lg">${position.currentValue.toFixed(2)}</div>
+                        </div>
+                      </div>
+                      <div className="pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">P/L No Realizado</span>
+                          <div className={`flex items-center gap-2 font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                            {position.pnl >= 0 ? <TrendingUp size={20} strokeWidth={2.5} /> : <TrendingDown size={20} strokeWidth={2.5} />}
+                            <span>{position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}</span>
+                            <span className="text-sm font-semibold">({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Precio Actual</div>
-                      <div className="font-bold text-gray-900 text-lg">
-                        {(position.currentPrice * 100).toFixed(1)}¢
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Valor Total</div>
-                      <div className="font-bold text-gray-900 text-lg">
-                        ${position.currentValue.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* P/L Section */}
-                  <div className="pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-600">P/L No Realizado</span>
-                      <div className={`flex items-center gap-2 font-bold text-lg ${
-                        position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'
-                      }`}>
-                        {position.pnl >= 0 ? (
-                          <TrendingUp size={20} strokeWidth={2.5} />
-                        ) : (
-                          <TrendingDown size={20} strokeWidth={2.5} />
-                        )}
-                        <span>
-                          {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
-                        </span>
-                        <span className="text-sm font-semibold">
-                          ({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* === BLOQUE B: MÚLTIPLES (ACORDEÓN AZUL) === */}
+              {Object.keys(multipleActivePositionsGroups).length > 0 && (
+                <div className="space-y-4">
+                  {Object.entries(multipleActivePositionsGroups).map(([topic, positions]) => (
+                    <div key={topic} className="bg-white border-2 border-polyblue/20 rounded-xl overflow-hidden shadow-sm transition-all">
+                      <button onClick={() => toggleTopic(topic)} className="w-full flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-50 transition-colors tap-feedback">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-polyblue text-white rounded-lg flex items-center justify-center font-bold shadow-sm text-sm">
+                            {positions.length}
+                          </div>
+                          <h4 className="font-bold text-gray-900 text-sm text-left">🎯 {topic}</h4>
+                        </div>
+                        <ChevronDown size={20} className={`text-polyblue transform transition-transform duration-300 ${expandedTopics[topic] ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {expandedTopics[topic] && (
+                        <div className="p-3 border-t-2 border-polyblue/10 bg-gray-50/50 space-y-3">
+                          {positions.map((position, index) => (
+                            <div key={index} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="mb-4">
+                                <h3 className="font-bold text-gray-900 leading-snug mb-2">{position.market.question}</h3>
+                                <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${position.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'}`}>
+                                  {position.side} • {position.shares.toFixed(2)} acciones
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Costo Prom.</div>
+                                  <div className="font-bold text-gray-900 text-lg">{(position.avgCost * 100).toFixed(1)}¢</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Precio Actual</div>
+                                  <div className="font-bold text-gray-900 text-lg">{(position.currentPrice * 100).toFixed(1)}¢</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Valor Total</div>
+                                  <div className="font-bold text-gray-900 text-lg">${position.currentValue.toFixed(2)}</div>
+                                </div>
+                              </div>
+                              <div className="pt-4 border-t border-gray-100">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-600">P/L No Realizado</span>
+                                  <div className={`flex items-center gap-2 font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                                    {position.pnl >= 0 ? <TrendingUp size={20} strokeWidth={2.5} /> : <TrendingDown size={20} strokeWidth={2.5} />}
+                                    <span>{position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}</span>
+                                    <span className="text-sm font-semibold">({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -317,100 +374,134 @@ export default function PortfolioPage() {
 
           {closedPositions.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-              <p className="text-gray-600">
-                Aún no tienes resultados de mercados finalizados
-              </p>
+              <p className="text-gray-600">Aún no tienes resultados de mercados finalizados</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {closedPositions.map((position, index) => (
-                <div
-                  key={index}
-                  className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm opacity-90"
-                >
-                  {/* Market Question */}
-                  {/* Market Question */}
-                  <div className="mb-4">
-                    <h3 className="font-bold text-gray-700 leading-snug mb-2">
-                      {position.market.group_topic ? (
-                        <>
-                          <span className="text-gray-500">🎯 {position.market.group_topic}</span>
-                          <span className="text-gray-400 mx-2">—</span>
-                          {position.market.question}
-                        </>
-                      ) : (
-                        position.market.question
-                      )}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${
-                        position.side === 'YES'
-                          ? 'bg-emerald-100 text-polygreen'
-                          : 'bg-rose-100 text-polyred'
-                      }`}>
-                        {position.side} • {position.shares.toFixed(2)} acciones
-                      </div>
-                      {position.isWinner ? (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-green-100 text-green-700 border-2 border-green-300">
-                          <CheckCircle size={14} />
-                          GANASTE
+            <div className="space-y-6">
+              
+              {/* === BLOQUE A: CERRADOS PARTICULARES === */}
+              {particularClosedPositions.length > 0 && (
+                <div className="space-y-3">
+                  {particularClosedPositions.map((position, index) => (
+                    <div key={index} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm opacity-90">
+                      <div className="mb-4">
+                        <h3 className="font-bold text-gray-700 leading-snug mb-2">{position.market.question}</h3>
+                        <div className="flex items-center gap-2">
+                          <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${position.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'}`}>
+                            {position.side} • {position.shares.toFixed(2)} acciones
+                          </div>
+                          {position.isWinner ? (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-green-100 text-green-700 border-2 border-green-300">
+                              <CheckCircle size={14} /> GANASTE
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 border-2 border-gray-300">
+                              <XCircle size={14} /> PERDISTE
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 border-2 border-gray-300">
-                          <XCircle size={14} />
-                          PERDISTE
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Invertido</div>
+                          <div className="font-bold text-gray-900 text-lg">${position.costBasis.toFixed(2)}</div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Invertido</div>
-                      <div className="font-bold text-gray-900 text-lg">
-                        ${position.costBasis.toFixed(2)}
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Valor Final</div>
+                          <div className="font-bold text-gray-900 text-lg">${position.currentValue.toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-xs font-medium mb-1">Resultado</div>
+                          <div className={`font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                            {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">P/L Realizado</span>
+                          <div className={`flex items-center gap-2 font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                            {position.pnl >= 0 ? <TrendingUp size={20} strokeWidth={2.5} /> : <TrendingDown size={20} strokeWidth={2.5} />}
+                            <span>{position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}</span>
+                            <span className="text-sm font-semibold">({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Valor Final</div>
-                      <div className="font-bold text-gray-900 text-lg">
-                        ${position.currentValue.toFixed(2)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-500 text-xs font-medium mb-1">Resultado</div>
-                      <div className={`font-bold text-lg ${
-                        position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'
-                      }`}>
-                        {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* P/L Realizado */}
-                  <div className="pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-600">P/L Realizado</span>
-                      <div className={`flex items-center gap-2 font-bold text-lg ${
-                        position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'
-                      }`}>
-                        {position.pnl >= 0 ? (
-                          <TrendingUp size={20} strokeWidth={2.5} />
-                        ) : (
-                          <TrendingDown size={20} strokeWidth={2.5} />
-                        )}
-                        <span>
-                          {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
-                        </span>
-                        <span className="text-sm font-semibold">
-                          ({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* === BLOQUE B: CERRADOS MÚLTIPLES (ACORDEÓN GRIS) === */}
+              {Object.keys(multipleClosedPositionsGroups).length > 0 && (
+                <div className="space-y-4">
+                  {Object.entries(multipleClosedPositionsGroups).map(([topic, positions]) => (
+                    <div key={topic} className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-sm transition-all opacity-90 hover:opacity-100">
+                      <button onClick={() => toggleClosedTopic(topic)} className="w-full flex items-center justify-between p-4 bg-gray-100 hover:bg-gray-200 transition-colors tap-feedback">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-gray-500 text-white rounded-lg flex items-center justify-center font-bold shadow-sm text-sm">
+                            {positions.length}
+                          </div>
+                          <h4 className="font-bold text-gray-700 text-sm text-left">🎯 {topic}</h4>
+                        </div>
+                        <ChevronDown size={20} className={`text-gray-500 transform transition-transform duration-300 ${expandedClosedTopics[topic] ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {expandedClosedTopics[topic] && (
+                        <div className="p-3 border-t-2 border-gray-200 bg-gray-50/50 space-y-3">
+                          {positions.map((position, index) => (
+                            <div key={index} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                              <div className="mb-4">
+                                <h3 className="font-bold text-gray-700 leading-snug mb-2">{position.market.question}</h3>
+                                <div className="flex items-center gap-2">
+                                  <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold ${position.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'}`}>
+                                    {position.side} • {position.shares.toFixed(2)} acciones
+                                  </div>
+                                  {position.isWinner ? (
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-green-100 text-green-700 border-2 border-green-300">
+                                      <CheckCircle size={14} /> GANASTE
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 border-2 border-gray-300">
+                                      <XCircle size={14} /> PERDISTE
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Invertido</div>
+                                  <div className="font-bold text-gray-900 text-lg">${position.costBasis.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Valor Final</div>
+                                  <div className="font-bold text-gray-900 text-lg">${position.currentValue.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs font-medium mb-1">Resultado</div>
+                                  <div className={`font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                                    {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="pt-4 border-t border-gray-100">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-600">P/L Realizado</span>
+                                  <div className={`flex items-center gap-2 font-bold text-lg ${position.pnl >= 0 ? 'text-polygreen' : 'text-polyred'}`}>
+                                    {position.pnl >= 0 ? <TrendingUp size={20} strokeWidth={2.5} /> : <TrendingDown size={20} strokeWidth={2.5} />}
+                                    <span>{position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}</span>
+                                    <span className="text-sm font-semibold">({position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(1)}%)</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
