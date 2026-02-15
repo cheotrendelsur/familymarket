@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
+import { useAuth } from '../context/AuthContext' // <-- NUEVA IMPORTACIÓN
 import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle, ChevronDown } from 'lucide-react'
 import MarketCard from '../components/MarketCard'
 import TradeModal from '../components/TradeModal'
 
 export default function HomePage({ setIsModalOpen }) {
+  const { profile } = useAuth() // <-- YA SABE QUIÉN ERES
   const [activeMarkets, setActiveMarkets] = useState([])
   const [closedMarkets, setClosedMarkets] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
@@ -15,39 +17,29 @@ export default function HomePage({ setIsModalOpen }) {
   const [expandedTopics, setExpandedTopics] = useState({})
   const [expandedClosedTopics, setExpandedClosedTopics] = useState({})
 
+  // Efecto 1: Cargar datos solo cuando sepamos quién es el usuario
   useEffect(() => {
-    fetchAllData()
+    if (profile) {
+      fetchAllData()
+    }
+  }, [profile])
 
-    // ============================================
-    // OPTIMIZACIÓN: Suscripción Realtime con cleanup
-    // ============================================
+  // Efecto 2: Escuchar cambios en la base de datos en tiempo real
+  useEffect(() => {
     const channel = supabase
       .channel('homepage-changes')
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'transaction_logs' 
-        },
-        () => {
-          fetchLeaderboard()
-        }
+        { event: '*', schema: 'public', table: 'transaction_logs' },
+        () => { fetchLeaderboard() }
       )
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'markets' 
-        },
-        () => {
-          fetchMarkets()
-        }
+        { event: '*', schema: 'public', table: 'markets' },
+        () => { fetchMarkets() }
       )
       .subscribe()
 
-    // CRÍTICO: Cleanup para evitar duplicar suscripciones
     return () => {
       supabase.removeChannel(channel)
     }
@@ -74,7 +66,6 @@ export default function HomePage({ setIsModalOpen }) {
         .order('created_at', { ascending: false })
 
       if (activeError) throw activeError
-      setActiveMarkets(active || [])
 
       const { data: closed, error: closedError } = await supabase
         .from('markets')
@@ -83,7 +74,17 @@ export default function HomePage({ setIsModalOpen }) {
         .order('resolved_at', { ascending: false })
 
       if (closedError) throw closedError
-      setClosedMarkets(closed || [])
+
+      // 👇 EL FILTRO FANTASMA (LISTA NEGRA) 👇
+      const filterVisible = (marketsList) => marketsList.filter(m => 
+        profile?.is_admin || // El admin siempre ve todo
+        !m.target_users || // Si no hay restricción, lo ven todos
+        m.target_users.length === 0 || 
+        !m.target_users.includes(profile?.id) // <-- CAMBIO CLAVE: Si NO está bloqueado, lo ve.
+      )
+
+      setActiveMarkets(filterVisible(active || []))
+      setClosedMarkets(filterVisible(closed || []))
     } catch (error) {
       console.error('Error al obtener mercados:', error)
     } finally {

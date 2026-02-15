@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../context/AuthContext'
-import { Plus, CheckCircle, XCircle, AlertCircle, Trash2, ChevronDown } from 'lucide-react'
+import { Plus, CheckCircle, XCircle, AlertCircle, Trash2, ChevronDown, Check } from 'lucide-react'
 
 export default function AdminPage() {
   const { profile } = useAuth()
@@ -21,6 +21,8 @@ export default function AdminPage() {
   const [isMultiple, setIsMultiple] = useState(false)
   const [groupTopic, setGroupTopic] = useState('')
   const [multipleOptions, setMultipleOptions] = useState(['', ''])
+  const [usersList, setUsersList] = useState([])
+  const [targetUsers, setTargetUsers] = useState([])
 
   const [expandedTopics, setExpandedTopics] = useState({})
 
@@ -41,8 +43,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (profile?.is_admin) {
       fetchAllMarkets()
+      fetchUsersList() // <-- ESTA LÍNEA ES LA QUE FALTABA
     }
   }, [profile])
+
+  const fetchUsersList = async () => {
+    const { data } = await supabase.from('profiles').select('id, username').not('username', 'is', null)
+    setUsersList(data || [])
+  }
 
   const fetchAllMarkets = async () => {
     try {
@@ -82,7 +90,10 @@ export default function AdminPage() {
 
           await supabase
             .from('markets')
-            .update({ group_topic: groupTopic.trim() })
+            .update({ 
+              group_topic: groupTopic.trim(),
+              target_users: targetUsers.length > 0 ? targetUsers : null // <-- NUEVO
+            })
             .eq('question', opt.trim())
         }
         setCreateSuccess(`✅ ${validOptions.length} submercados creados bajo el tópico: ${groupTopic}`)
@@ -94,12 +105,19 @@ export default function AdminPage() {
           p_image_url: newMarket.image_url.trim() || null
         })
         if (error) throw error
+        
+        // 👇 NUEVO: GUARDAR FANTASMAS PARTICULARES 👇
+        if (targetUsers.length > 0) {
+          await supabase.from('markets').update({ target_users: targetUsers }).eq('question', newMarket.question.trim())
+        }
+
         setCreateSuccess('✅ Mercado creado exitosamente')
       }
 
       setNewMarket({ question: '', description: '', image_url: '' })
       setGroupTopic('')
       setMultipleOptions(['', ''])
+      setTargetUsers([]) // <-- NUEVO
       setIsMultiple(false)
       fetchAllMarkets()
       
@@ -301,6 +319,54 @@ export default function AdminPage() {
                 style={{ fontSize: '16px' }}
               />
             </div>
+
+            {/* 👇 CAJA DEL MERCADO FANTASMA 👇 */}
+            <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4">
+              <h3 className="font-bold text-gray-900 mb-2">👻 Filtro Fantasma (Lista Negra)</h3>
+              <p className="text-xs text-gray-600 mb-3 font-medium">
+                Selecciona a quién quieres <b>OCULTARLE</b> este mercado. Si no seleccionas a nadie, será público para todos.
+              </p>
+              <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto p-1">
+                {usersList.map(u => {
+                  const isSelected = targetUsers.includes(u.id);
+                  return (
+                    <label 
+                      key={u.id} 
+                      className={`flex items-center gap-3 cursor-pointer p-3 rounded-xl border-2 transition-all group ${
+                        isSelected 
+                          ? 'bg-blue-50 border-polyblue shadow-sm' 
+                          : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {/* Input nativo oculto (para la lógica) */}
+                      <input 
+                        type="checkbox" 
+                        className="hidden"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) setTargetUsers([...targetUsers, u.id])
+                          else setTargetUsers(targetUsers.filter(id => id !== u.id))
+                        }}
+                      />
+                      
+                      {/* Checkbox Visual Personalizado (El cuadrito) */}
+                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                        isSelected 
+                          ? 'bg-polyblue border-polyblue scale-110' 
+                          : 'bg-gray-100 border-gray-300 group-hover:border-gray-400'
+                      }`}>
+                        {isSelected && <Check size={16} className="text-white" strokeWidth={3} />}
+                      </div>
+
+                      <span className={`text-sm font-bold truncate transition-colors ${isSelected ? 'text-polyblue' : 'text-gray-700'}`}>
+                        {u.username}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+            {/* 👆 FIN CAJA FANTASMA 👆 */}
 
             <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-900">
               <div className="flex items-start gap-3">

@@ -27,8 +27,10 @@ export default function MarketPage() {
   const [expandedClosedTopics, setExpandedClosedTopics] = useState({})
 
   useEffect(() => {
-    fetchMarkets()
-  }, [])
+    if (profile) {
+      fetchMarkets()
+    }
+  }, [profile])
 
   useEffect(() => {
     if (selectedMarket) {
@@ -49,7 +51,6 @@ export default function MarketPage() {
         .order('created_at', { ascending: false })
 
       if (activeError) throw activeError
-      setActiveMarkets(active || [])
 
       // Mercados cerrados
       const { data: closed, error: closedError } = await supabase
@@ -59,13 +60,26 @@ export default function MarketPage() {
         .order('resolved_at', { ascending: false })
 
       if (closedError) throw closedError
-      setClosedMarkets(closed || [])
+
+      // 👇 EL FILTRO FANTASMA (LISTA NEGRA) 👇
+      const filterVisible = (marketsList) => marketsList.filter(m => 
+        profile?.is_admin || 
+        !m.target_users || 
+        m.target_users.length === 0 || 
+        !m.target_users.includes(profile?.id) // <-- CAMBIO CLAVE: Si NO está bloqueado, lo ve.
+      )
+
+      const visibleActive = filterVisible(active || [])
+      const visibleClosed = filterVisible(closed || [])
+
+      setActiveMarkets(visibleActive)
+      setClosedMarkets(visibleClosed)
 
       // Seleccionar automáticamente el mercado activo más reciente
-      if (active && active.length > 0) {
-        setSelectedMarket(active[0])
-      } else if (closed && closed.length > 0) {
-        setSelectedMarket(closed[0])
+      if (visibleActive.length > 0) {
+        setSelectedMarket(visibleActive[0])
+      } else if (visibleClosed.length > 0) {
+        setSelectedMarket(visibleClosed[0])
       }
     } catch (error) {
       console.error('Error al obtener mercados:', error)
