@@ -150,6 +150,25 @@ export default function AdminPage() {
     }
   }
 
+  const handleDeleteMarket = async (marketId, marketName) => {
+    const confirmMsg = `🚨 PELIGRO: ANULAR Y BORRAR MERCADO 🚨\n\n¿Estás absolutamente seguro de que quieres eliminar el mercado:\n"${marketName}"?\n\nEsta acción:\n1. Devolverá el dinero invertido a los jugadores.\n2. Revertirá las ganancias de quienes vendieron antes de tiempo.\n3. Borrará todo el historial para siempre.\n\nEs como si el mercado nunca hubiese existido. Esta acción es IRREVERSIBLE.`
+    
+    if (!window.confirm(confirmMsg)) return
+
+    try {
+      const { error } = await supabase.rpc('delete_market_and_refund', {
+        p_market_id: marketId
+      })
+
+      if (error) throw error
+
+      alert(`✅ Mercado "${marketName}" eliminado y fondos devueltos a los jugadores con éxito.`)
+      fetchAllMarkets()
+    } catch (error) {
+      alert(`❌ Error al eliminar mercado:\n${error.message}`)
+    }
+  }
+
   if (!profile?.is_admin) {
     return (
       <div className="flex items-center justify-center min-h-screen-safe px-4">
@@ -451,12 +470,17 @@ export default function AdminPage() {
                           </div>
 
                           {!market.closed ? (
-                            <div className="grid grid-cols-2 gap-3 pt-4 border-t-2 border-gray-200">
-                              <button onClick={() => handleResolveMarket(market.id, 'YES')} className="flex items-center justify-center gap-2 bg-polygreen hover:bg-green-700 active:bg-green-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-green-500/20 no-select tap-feedback">
-                                <CheckCircle size={20} strokeWidth={2.5} /> Gana YES
-                              </button>
-                              <button onClick={() => handleResolveMarket(market.id, 'NO')} className="flex items-center justify-center gap-2 bg-polyred hover:bg-red-700 active:bg-red-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 no-select tap-feedback">
-                                <XCircle size={20} strokeWidth={2.5} /> Gana NO
+                            <div className="pt-4 border-t-2 border-gray-200 space-y-3">
+                              <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => handleResolveMarket(market.id, 'YES')} className="flex items-center justify-center gap-2 bg-polygreen hover:bg-green-700 active:bg-green-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-green-500/20 no-select tap-feedback">
+                                  <CheckCircle size={20} strokeWidth={2.5} /> Gana YES
+                                </button>
+                                <button onClick={() => handleResolveMarket(market.id, 'NO')} className="flex items-center justify-center gap-2 bg-polyred hover:bg-red-700 active:bg-red-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 no-select tap-feedback">
+                                  <XCircle size={20} strokeWidth={2.5} /> Gana NO
+                                </button>
+                              </div>
+                              <button onClick={() => handleDeleteMarket(market.id, market.question)} className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-red-50 text-gray-500 hover:text-red-600 border-2 border-gray-200 hover:border-red-200 py-2.5 rounded-xl font-bold transition-all tap-feedback">
+                                <Trash2 size={18} strokeWidth={2.5} /> Anular y Eliminar Mercado
                               </button>
                             </div>
                           ) : (
@@ -538,12 +562,17 @@ export default function AdminPage() {
                                   </div>
 
                                   {!market.closed ? (
-                                    <div className="grid grid-cols-2 gap-3 pt-4 border-t-2 border-gray-200">
-                                      <button onClick={() => handleResolveMarket(market.id, 'YES')} className="flex items-center justify-center gap-2 bg-polygreen hover:bg-green-700 active:bg-green-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-green-500/20 no-select tap-feedback">
-                                        <CheckCircle size={20} strokeWidth={2.5} /> Gana YES
-                                      </button>
-                                      <button onClick={() => handleResolveMarket(market.id, 'NO')} className="flex items-center justify-center gap-2 bg-polyred hover:bg-red-700 active:bg-red-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 no-select tap-feedback">
-                                        <XCircle size={20} strokeWidth={2.5} /> Gana NO
+                                    <div className="pt-4 border-t-2 border-gray-200 space-y-3">
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => handleResolveMarket(market.id, 'YES')} className="flex items-center justify-center gap-2 bg-polygreen hover:bg-green-700 active:bg-green-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-green-500/20 no-select tap-feedback">
+                                          <CheckCircle size={20} strokeWidth={2.5} /> Gana YES
+                                        </button>
+                                        <button onClick={() => handleResolveMarket(market.id, 'NO')} className="flex items-center justify-center gap-2 bg-polyred hover:bg-red-700 active:bg-red-800 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 no-select tap-feedback">
+                                          <XCircle size={20} strokeWidth={2.5} /> Gana NO
+                                        </button>
+                                      </div>
+                                      <button onClick={() => handleDeleteMarket(market.id, market.question)} className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-red-50 text-gray-500 hover:text-red-600 border-2 border-gray-200 hover:border-red-200 py-2.5 rounded-xl font-bold transition-all tap-feedback">
+                                        <Trash2 size={18} strokeWidth={2.5} /> Anular y Eliminar Mercado
                                       </button>
                                     </div>
                                   ) : (
