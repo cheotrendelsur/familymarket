@@ -50,10 +50,10 @@ export default function TradeModal({ market, side, onClose }) {
 
       if (error) throw error
       // Ahora sí restamos el conteo real
-      setDailyMovesRemaining(25 - (count || 0))
+      setDailyMovesRemaining(60 - (count || 0))
     } catch (error) {
       console.error('Error al obtener movimientos diarios:', error)
-      setDailyMovesRemaining(25)
+      setDailyMovesRemaining(60)
     }
   }
 
