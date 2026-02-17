@@ -24,6 +24,10 @@ export default function AdminPage() {
   const [usersList, setUsersList] = useState([])
   const [targetUsers, setTargetUsers] = useState([])
 
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [balanceAmount, setBalanceAmount] = useState('')
+  const [balanceLoading, setBalanceLoading] = useState(false)
+
   const [expandedTopics, setExpandedTopics] = useState({})
 
   const toggleTopic = (topic) => {
@@ -48,7 +52,8 @@ export default function AdminPage() {
   }, [profile])
 
   const fetchUsersList = async () => {
-    const { data } = await supabase.from('profiles').select('id, username').not('username', 'is', null)
+    // 👇 NUEVO: Ahora pedimos también el 'balance' y ordenamos por nombre 👇
+    const { data } = await supabase.from('profiles').select('id, username, balance').not('username', 'is', null).order('username')
     setUsersList(data || [])
   }
 
@@ -60,7 +65,14 @@ export default function AdminPage() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setMarkets(data || [])
+
+      // 👇 NUEVA LÓGICA DE ORDENAMIENTO (ACTIVOS PRIMERO) 👇
+      const sortedMarkets = (data || []).sort((a, b) => {
+        if (a.closed === b.closed) return 0 // Si ambos están iguales, mantienen su orden de fecha
+        return a.closed ? 1 : -1 // Si uno está cerrado (true), lo empujamos al final de la lista
+      })
+
+      setMarkets(sortedMarkets)
     } catch (error) {
       console.error('Error al obtener mercados:', error)
     } finally {
@@ -166,6 +178,39 @@ export default function AdminPage() {
       fetchAllMarkets()
     } catch (error) {
       alert(`❌ Error al eliminar mercado:\n${error.message}`)
+    }
+  }
+
+  const handleUpdateBalance = async (e, type) => {
+    e.preventDefault()
+    if (!selectedUserId || !balanceAmount || isNaN(balanceAmount) || Number(balanceAmount) <= 0) {
+      alert('Por favor, selecciona un usuario e ingresa un monto válido mayor a 0.')
+      return
+    }
+
+    const amount = type === 'add' ? Number(balanceAmount) : -Number(balanceAmount)
+    const actionText = type === 'add' ? 'agregar' : 'quitar'
+    const confirmMsg = `¿Estás seguro de ${actionText} $${Math.abs(amount)} al usuario seleccionado?`
+
+    if (!window.confirm(confirmMsg)) return
+    setBalanceLoading(true)
+
+    try {
+      const { error } = await supabase.rpc('admin_update_balance', {
+        p_user_id: selectedUserId,
+        p_amount: amount
+      })
+
+      if (error) throw error
+
+      alert(`✅ Saldo actualizado con éxito.`)
+      setBalanceAmount('')
+      setSelectedUserId('')
+      fetchUsersList() // Refresca la lista para mostrar el nuevo saldo
+    } catch (error) {
+      alert(`❌ Error al actualizar saldo:\n${error.message}`)
+    } finally {
+      setBalanceLoading(false)
     }
   }
 
@@ -412,6 +457,70 @@ export default function AdminPage() {
               {createLoading ? 'Creando Mercado...' : 'Crear Mercado CPMM'}
             </button>
           </form>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-2xl">$</span>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Gestión de Efectivo</h2>
+              <p className="text-sm text-gray-600">Agrega o quita fondos a la cartera de los jugadores</p>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                Seleccionar Usuario
+              </label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500 focus:ring-opacity-10 outline-none transition bg-white"
+              >
+                <option value="">-- Elige un jugador --</option>
+                {usersList.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.username} (Saldo actual: ${u.balance?.toFixed(2) || '0.00'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                Monto (USD)
+              </label>
+              <input
+                type="number"
+                value={balanceAmount}
+                onChange={(e) => setBalanceAmount(e.target.value)}
+                placeholder="Ej: 50.00"
+                min="0.01"
+                step="0.01"
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500 focus:ring-opacity-10 outline-none transition"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={(e) => handleUpdateBalance(e, 'add')}
+                disabled={balanceLoading || !selectedUserId || !balanceAmount}
+                className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 tap-feedback"
+              >
+                <Plus size={20} strokeWidth={2.5} /> Agregar Fondos
+              </button>
+              <button
+                onClick={(e) => handleUpdateBalance(e, 'subtract')}
+                disabled={balanceLoading || !selectedUserId || !balanceAmount}
+                className="flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-rose-500/20 disabled:opacity-50 tap-feedback"
+              >
+                <Trash2 size={20} strokeWidth={2.5} /> Quitar Fondos
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Markets List */}
