@@ -19,6 +19,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [waiting, setWaiting] = useState(null)
 
   useEffect(() => {
     if (user) navigate('/', { replace: true })
@@ -40,6 +41,7 @@ export default function AuthPage() {
 
     setError(null)
     setSuccess(null)
+    setWaiting(null)
     setLoading(true)
     try {
       if (isSignUp) {
@@ -53,7 +55,10 @@ export default function AuthPage() {
           setIsSignUp(false)
         }
       } else {
-        const { error: signInError } = await signIn(cleanEmail, password)
+        const { error: signInError } = await signIn(cleanEmail, password, {
+          // Muchos jugadores entrando a la vez: se reintenta solo, sin que tengas que hacer nada.
+          onWait: (attempt, total) => setWaiting(`Hay mucha gente entrando a la vez… reintentando solo (${attempt}/${total})`),
+        })
         if (signInError) throw signInError
         navigate('/', { replace: true })
       }
@@ -61,6 +66,7 @@ export default function AuthPage() {
       setError(friendlyAuthError(err))
     } finally {
       setLoading(false)
+      setWaiting(null)
     }
   }
 
@@ -129,6 +135,13 @@ export default function AuthPage() {
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3" role="alert">
                 <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
                 <p className="text-red-700 text-sm flex-1">{error}</p>
+              </div>
+            )}
+
+            {waiting && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3" role="status">
+                <Loader size={18} className="animate-spin text-amber-600 flex-shrink-0" />
+                <p className="text-amber-900 text-sm">{waiting}</p>
               </div>
             )}
 

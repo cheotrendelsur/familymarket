@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../supabaseClient'
+import { auth, db } from '../lib/api'
+import { usePolling } from '../hooks/usePolling'
 
 const AuthContext = createContext(null)
 
@@ -10,8 +11,8 @@ export const useAuth = () => {
   return context
 }
 
-const PROFILE_COLUMNS = 'id, username, balance, is_admin, email'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const RATE_LIMIT = /rate limit|too many|over_request_rate_limit/i
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -25,15 +26,30 @@ export function AuthProvider({ children }) {
   const loadProfile = useCallback(async (userId, { silent = false } = {}) => {
     if (!silent) setProfileError(null)
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle()
+      const { data, error } = await db.profile(userId)
       if (userIdRef.current !== userId) return null // cambió de usuario mientras cargaba
       if (!error && data) {
-        setProfile({ ...data, balance: Number(data.balance) })
+        setProfile((prev) => {
+          const next = { ...data, balance: Number(data.balance) }
+          // Evita renderizar toda la app si nada cambió.
+          if (
+            prev &&
+            prev.id === next.id &&
+            prev.balance === next.balance &&
+            prev.username === next.username &&
+            prev.is_admin === next.is_admin &&
+            prev.is_moderator === next.is_moderator
+          ) {
+            return prev
+          }
+          return next
+        })
         setProfileError(null)
         return data
       }
+      if (silent) return null
       if (attempt < 3) await sleep(500 * (attempt + 1))
-      else if (!silent) setProfileError(error?.message || 'No se encontró tu perfil')
+      else setProfileError(error?.message || 'No se encontró tu perfil')
     }
     return null
   }, [])
@@ -41,7 +57,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    auth.getSession().then(async ({ data: { session } }) => {
       if (!active) return
       const sessionUser = session?.user ?? null
       userIdRef.current = sessionUser?.id ?? null
@@ -50,9 +66,7 @@ export function AuthProvider({ children }) {
       if (active) setLoading(false)
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const unsubscribe = auth.onChange((event, session) => {
       if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return
       const sessionUser = session?.user ?? null
       const changed = (sessionUser?.id ?? null) !== userIdRef.current
@@ -73,18 +87,38 @@ export function AuthProvider({ children }) {
 
     return () => {
       active = false
-      subscription.unsubscribe()
+      unsubscribe()
     }
   }, [loadProfile])
 
-  const signUp = useCallback((email, password) => supabase.auth.signUp({ email, password }), [])
-  const signIn = useCallback((email, password) => supabase.auth.signInWithPassword({ email, password }), [])
-  const signOut = useCallback(() => supabase.auth.signOut(), [])
+  const signUp = useCallback((email, password) => auth.signUp(email, password), [])
+
+  /**
+   * Inicia sesión. Si el servidor pide esperar (muchos jugadores entrando a la vez
+   * desde la misma red), reintenta solo unas veces avisando con `onWait(intento, total)`.
+   */
+  const signIn = useCallback(async (email, password, { onWait, attempts = 4 } = {}) => {
+    let result
+    for (let i = 1; i <= attempts; i += 1) {
+      result = await auth.signIn(email, password)
+      if (!result.error || !RATE_LIMIT.test(result.error.message || '')) return result
+      if (i < attempts) {
+        onWait?.(i, attempts - 1)
+        await sleep(1800 * i + Math.random() * 1500)
+      }
+    }
+    return result
+  }, [])
+
+  const signOut = useCallback(() => auth.signOut(), [])
 
   const refreshProfile = useCallback(() => {
     if (userIdRef.current) return loadProfile(userIdRef.current, { silent: true })
     return Promise.resolve(null)
   }, [loadProfile])
+
+  // El dueño puede cambiar roles/saldos en cualquier momento: se mantiene al día sin recargar.
+  usePolling(refreshProfile, { interval: 60000, enabled: !!user && !!profile?.username })
 
   const retryProfile = useCallback(async () => {
     if (!userIdRef.current) return
@@ -106,6 +140,9 @@ export function AuthProvider({ children }) {
       loading,
       profileError,
       needsUsername: !!profile && !profile.username,
+      isOwner: !!profile?.is_admin,
+      isModerator: !!profile?.is_moderator,
+      isStaff: !!profile?.is_admin || !!profile?.is_moderator,
       signUp,
       signIn,
       signOut,

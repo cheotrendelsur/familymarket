@@ -7,7 +7,7 @@ import { consoleErrors } from './setup'
 const T = { timeout: 45000 }
 
 describe('Alta de jugador nuevo', () => {
-  it('se registra, elige nombre, juega, cierra sesión y vuelve a entrar', async () => {
+  it('se registra, elige nombre, aparece en el ranking, cierra sesión y vuelve a entrar', async () => {
     window.localStorage.clear()
     const c = creds()
     const suffix = Math.random().toString(16).slice(2, 8)
@@ -46,10 +46,13 @@ describe('Alta de jugador nuevo', () => {
     fireEvent.click(submit)
 
     // ---- ya dentro del juego ----
-    expect(await screen.findByText('Mercados Activos', {}, T)).toBeTruthy()
+    expect(await screen.findByLabelText('Buscar mercados', {}, T)).toBeTruthy()
     expect(await screen.findByText(`@${username}`, {}, T)).toBeTruthy()
     expect(screen.getByLabelText('Saldo disponible').textContent).toContain('1,000.00')
-    expect(await screen.findByText(username, { selector: 'span.font-bold' }, T)).toBeTruthy() // aparece en el ranking
+
+    // aparece en el ranking
+    fireEvent.click(screen.getByRole('link', { name: /Ranking/ }))
+    expect((await screen.findAllByText(username, {}, T)).length).toBeGreaterThan(0)
 
     // ---- salir ----
     fireEvent.click(screen.getByLabelText('Cerrar sesión'))
@@ -64,7 +67,7 @@ describe('Alta de jugador nuevo', () => {
     // ---- entrar bien ----
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: c.password } })
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
-    expect(await screen.findByText('Mercados Activos', {}, T)).toBeTruthy()
+    expect(await screen.findByLabelText('Buscar mercados', {}, T)).toBeTruthy()
 
     const bad = consoleErrors.filter((m) => /Warning|Error|Uncaught|Cannot|undefined/i.test(m) && !/act\(|AuthApiError|Invalid login/.test(m))
     expect(bad, bad.join('\n')).toEqual([])

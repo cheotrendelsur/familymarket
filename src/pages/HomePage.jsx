@@ -1,223 +1,265 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle, RefreshCw, TrendingUp, Trophy, XCircle } from 'lucide-react'
-import { rpc } from '../lib/api'
-import { groupMarkets } from '../lib/markets'
-import { noPrice, yesPrice } from '../lib/trading'
-import { useAuth } from '../context/AuthContext'
+import { useLayoutEffect, useMemo, useState } from 'react'
+import { useNavigate, useNavigationType } from 'react-router-dom'
+import { ChevronDown, Flame, Lightbulb, SearchX, TrendingUp } from 'lucide-react'
 import { useGame } from '../context/GameContext'
-import { usePolling } from '../hooks/usePolling'
-import { useToggleSet } from '../hooks/useToggleSet'
-import MarketCard from '../components/MarketCard'
-import TradeModal from '../components/TradeModal'
-import GroupAccordion from '../components/GroupAccordion'
-import Leaderboard from '../components/Leaderboard'
-import PageLoader from '../components/PageLoader'
+import { useActivity } from '../hooks/useActivity'
+import { matchesQuery, SORTS } from '../lib/markets'
+import { yesPrice } from '../lib/trading'
+import MarketCard, { GroupCard } from '../components/MarketCard'
+import { ActivityTicker } from '../components/ActivityFeed'
+import { CategoryChips, SearchBar, SortTabs } from '../components/SearchControls'
+import ChanceRing from '../components/ChanceRing'
+import MarketImage from '../components/MarketImage'
+import YesNoButtons from '../components/YesNoButtons'
+import { ListSkeleton } from '../components/ui/Skeleton'
+import { useTrade } from '../components/TradeSheet'
 
-function ClosedCard({ market }) {
-  const won = market.outcome === 'YES'
+// Los filtros y la posición de scroll se recuerdan mientras la app está abierta:
+// al volver de un mercado, la lista queda como estaba.
+const memory = { query: '', category: 'all', sort: 'trending', scroll: 0, showResolved: false }
+
+const RESOLVED_PAGE = 12
+
+function FeaturedCard({ item, onTrade }) {
+  const navigate = useNavigate()
+  const go = () => navigate(item.kind === 'group' ? `/g/${item.id}` : `/m/${item.id}`)
+  const lead = item.kind === 'group' ? item.markets[0] : item.market
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
-      <div className="p-4">
-        <div className="flex items-start gap-3 mb-3">
-          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
-          </div>
-          <h3 className="font-semibold text-gray-700 leading-snug flex-1">{market.question}</h3>
-        </div>
-        <div className={`rounded-xl p-3 border-2 mb-3 ${won ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-          <div className="flex items-center justify-center gap-2">
-            {won ? (
-              <CheckCircle size={22} className="text-polygreen" strokeWidth={2.5} />
-            ) : (
-              <XCircle size={22} className="text-polyred" strokeWidth={2.5} />
-            )}
-            <span className={`text-xl font-bold ${won ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs text-center">
-          <div>
-            <div className="text-gray-500">Precio final YES</div>
-            <div className="font-bold text-polygreen">{(yesPrice(market) * 100).toFixed(1)}¢</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Precio final NO</div>
-            <div className="font-bold text-polyred">{(noPrice(market) * 100).toFixed(1)}¢</div>
-          </div>
-        </div>
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={go}
+      onKeyDown={(e) => e.key === 'Enter' && go()}
+      className="snap-start flex-shrink-0 w-[272px] sm:w-[300px] bg-white rounded-2xl border border-gray-200 shadow-card overflow-hidden cursor-pointer tap-feedback"
+    >
+      <div className="relative">
+        <MarketImage item={item} variant="banner" />
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/45 to-transparent" />
+        <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 text-xs font-extrabold text-white bg-orange-500 rounded-full px-2.5 py-1 shadow">
+          <Flame size={12} /> Tendencia
+        </span>
       </div>
-    </div>
-  )
-}
-
-const Grid = ({ children }) => <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
-
-export default function HomePage({ setIsModalOpen }) {
-  const { profile } = useAuth()
-  const { activeMarkets, closedMarkets, marketsLoaded, refreshMarkets } = useGame()
-  const [leaderboard, setLeaderboard] = useState([])
-  const [leaderboardLoaded, setLeaderboardLoaded] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [selection, setSelection] = useState(null) // { marketId, side }
-  const [openActive, toggleActive] = useToggleSet()
-  const [openClosed, toggleClosed] = useToggleSet()
-
-  const fetchLeaderboard = useCallback(async () => {
-    const data = await rpc('get_leaderboard')
-    setLeaderboard(data || [])
-    setLeaderboardLoaded(true)
-  }, [])
-  const { refresh: refreshLeaderboard } = usePolling(fetchLeaderboard, { interval: 30000 })
-
-  // El modal lee el mercado EN VIVO desde el contexto (precios siempre actualizados).
-  const selectedMarket = useMemo(
-    () => (selection ? activeMarkets.find((m) => m.id === selection.marketId) || null : null),
-    [selection, activeMarkets]
-  )
-
-  useEffect(() => {
-    setIsModalOpen?.(!!selectedMarket)
-    return () => setIsModalOpen?.(false)
-  }, [selectedMarket, setIsModalOpen])
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await Promise.allSettled([refreshMarkets(), refreshLeaderboard()])
-    setRefreshing(false)
-  }
-
-  const handleTrade = useCallback((market, side) => setSelection({ marketId: market.id, side }), [])
-  const handleClose = useCallback(() => {
-    setSelection(null)
-    refreshLeaderboard()
-  }, [refreshLeaderboard])
-
-  const active = useMemo(() => groupMarkets(activeMarkets), [activeMarkets])
-  const closed = useMemo(() => groupMarkets(closedMarkets), [closedMarkets])
-
-  if (!marketsLoaded) return <PageLoader label="Cargando mercados..." />
-
-  return (
-    <div className="min-h-screen-safe bg-polygray-bg pb-6">
-      <div className="bg-white border-b border-gray-200 mb-6">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Mercados Activos</h2>
-              <p className="text-sm text-gray-600 mt-1">Compra y vende acciones de eventos futuros</p>
-            </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-              aria-label="Refrescar mercados"
-            >
-              <RefreshCw size={20} className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`} strokeWidth={2} />
-            </button>
-          </div>
-
-          {activeMarkets.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
-              <TrendingUp size={48} className="mx-auto text-gray-400 mb-3" strokeWidth={1.5} />
-              <p className="text-gray-600">No hay mercados activos en este momento</p>
-              <p className="text-xs text-gray-400 mt-1">Cuando el administrador cree uno, aparecerá aquí al instante.</p>
-            </div>
+      <div className="p-3.5">
+        <div className="flex items-start gap-3">
+          <h3 className="flex-1 font-semibold text-[15px] leading-snug text-gray-900 line-clamp-2 min-h-[40px]">{item.title}</h3>
+          <ChanceRing value={yesPrice(lead)} size={46} stroke={4.5} />
+        </div>
+        <div className="mt-2.5">
+          {item.kind === 'single' ? (
+            <YesNoButtons market={item.market} onPick={onTrade} />
           ) : (
-            <div className="space-y-8">
-              {active.particular.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">Mercados Particulares</h3>
-                  <Grid>
-                    {active.particular.map((m) => (
-                      <MarketCard key={m.id} market={m} onTrade={handleTrade} />
-                    ))}
-                  </Grid>
-                </div>
-              )}
-              {active.groups.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">Mercados Múltiples</h3>
-                  <div className="space-y-4">
-                    {active.groups.map(([topic, list]) => (
-                      <GroupAccordion
-                        key={topic}
-                        topic={topic}
-                        count={list.length}
-                        open={!!openActive[topic]}
-                        onToggle={() => toggleActive(topic)}
-                      >
-                        <Grid>
-                          {list.map((m) => (
-                            <MarketCard key={m.id} market={m} onTrade={handleTrade} />
-                          ))}
-                        </Grid>
-                      </GroupAccordion>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <p className="text-sm text-gray-500 text-center py-2.5 rounded-xl bg-gray-50">
+              {item.markets.length} opciones · lidera <b className="text-gray-700">{lead.question}</b>
+            </p>
           )}
         </div>
       </div>
+    </article>
+  )
+}
 
-      <div className="max-w-7xl mx-auto px-4 mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Mercados Finalizados</h2>
-        {closedMarkets.length === 0 ? (
-          <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
-            <p className="text-gray-500">Aún no hay mercados finalizados</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {closed.particular.length > 0 && (
-              <Grid>
-                {closed.particular.map((m) => (
-                  <ClosedCard key={m.id} market={m} />
-                ))}
-              </Grid>
-            )}
-            {closed.groups.length > 0 && (
-              <div className="space-y-4">
-                {closed.groups.map(([topic, list]) => (
-                  <GroupAccordion
-                    key={topic}
-                    topic={topic}
-                    count={list.length}
-                    tone="gray"
-                    hintOpen="Ocultar resultados"
-                    hintClosed="Toca para ver resultados"
-                    open={!!openClosed[topic]}
-                    onToggle={() => toggleClosed(topic)}
-                  >
-                    <Grid>
-                      {list.map((m) => (
-                        <ClosedCard key={m.id} market={m} />
-                      ))}
-                    </Grid>
-                  </GroupAccordion>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+function Section({ title, count, children, tone }) {
+  return (
+    <section className="space-y-3">
+      <h2 className={`text-sm font-extrabold uppercase tracking-wider flex items-center gap-2 ${tone || 'text-gray-500'}`}>
+        {title}
+        {count !== undefined && <span className="text-xs font-bold bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">{count}</span>}
+      </h2>
+      {children}
+    </section>
+  )
+}
+
+const Grid = ({ children }) => <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">{children}</div>
+
+export default function HomePage() {
+  const { activeItems, resolvedItems, marketsLoaded } = useGame()
+  const { openTrade } = useTrade()
+  const navigate = useNavigate()
+  const navType = useNavigationType()
+  const { events } = useActivity({ limit: 30 })
+
+  const [query, setQueryState] = useState(memory.query)
+  const [category, setCategoryState] = useState(memory.category)
+  const [sort, setSortState] = useState(memory.sort)
+  const [showResolved, setShowResolvedState] = useState(memory.showResolved)
+  const [resolvedLimit, setResolvedLimit] = useState(RESOLVED_PAGE)
+
+  const setQuery = (v) => {
+    memory.query = v
+    setQueryState(v)
+  }
+  const setCategory = (v) => {
+    memory.category = v
+    setCategoryState(v)
+  }
+  const setSort = (v) => {
+    memory.sort = v
+    setSortState(v)
+  }
+  const setShowResolved = (v) => {
+    memory.showResolved = v
+    setShowResolvedState(v)
+  }
+
+  // Recupera el scroll al volver con "atrás"; lo guarda al salir.
+  useLayoutEffect(() => {
+    if (navType === 'POP' && memory.scroll > 0) window.scrollTo(0, memory.scroll)
+    return () => {
+      memory.scroll = window.scrollY
+    }
+  }, [navType])
+
+  const filtering = query.trim() !== '' || category !== 'all'
+
+  const matches = (i) => (category === 'all' || i.category === category) && matchesQuery(i, query)
+
+  const open = useMemo(
+    () => activeItems.filter((i) => i.state === 'open' && matches(i)).sort(SORTS[sort].fn),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeItems, query, category, sort]
+  )
+  const pending = useMemo(
+    () => activeItems.filter((i) => i.state === 'pending' && matches(i)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeItems, query, category]
+  )
+  const resolved = useMemo(
+    () => resolvedItems.filter(matches),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resolvedItems, query, category]
+  )
+
+  const counts = useMemo(() => {
+    const c = {}
+    for (const i of [...activeItems, ...resolvedItems]) c[i.category] = (c[i.category] || 0) + 1
+    return c
+  }, [activeItems, resolvedItems])
+
+  // "En tendencia": los más movidos en las últimas horas.
+  const trending = useMemo(
+    () =>
+      activeItems
+        .filter((i) => i.state === 'open' && i.score >= 8)
+        .sort(SORTS.trending.fn)
+        .slice(0, 5),
+    [activeItems]
+  )
+  const hotKeys = useMemo(() => new Set(trending.slice(0, 3).map((i) => i.key)), [trending])
+  const showFeatured = !filtering && trending.length >= 2
+
+  const nothingAtAll = marketsLoaded && activeItems.length === 0 && resolvedItems.length === 0
+  const noResults = marketsLoaded && !nothingAtAll && open.length + pending.length + resolved.length === 0
+
+  const renderItem = (item) =>
+    item.kind === 'group' ? (
+      <GroupCard key={item.key} item={item} hot={hotKeys.has(item.key)} onTrade={openTrade} />
+    ) : (
+      <MarketCard key={item.key} item={item} hot={hotKeys.has(item.key)} onTrade={openTrade} />
+    )
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 pt-4 pb-8 space-y-4">
+      <div className="space-y-3 sticky z-20 -mx-4 px-4 py-2 bg-polygray-bg" style={{ top: 'calc(56px + env(safe-area-inset-top))' }}>
+        <SearchBar value={query} onChange={setQuery} placeholder="Buscar: «lluvia», «papá», «comida»…" />
+        <CategoryChips value={category} onChange={setCategory} counts={counts} />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center gap-3 mb-4">
-          <Trophy size={28} className="text-yellow-500" strokeWidth={2} />
-          <h2 className="text-2xl font-bold text-gray-900">Ranking Familiar</h2>
+      {!marketsLoaded && <ListSkeleton rows={4} />}
+
+      {nothingAtAll && (
+        <div className="text-center py-14 bg-white rounded-3xl border border-gray-200 animate-fade-in">
+          <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
+            <TrendingUp size={38} className="text-polyblue" strokeWidth={1.8} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900">Aún no hay mercados</h2>
+          <p className="text-gray-500 text-sm mt-1 px-8">
+            Cuando alguien cree uno aparecerá aquí al instante. ¿Tienes una idea buena?
+          </p>
+          <button
+            onClick={() => navigate('/sugerir')}
+            className="mt-5 inline-flex items-center gap-2 bg-polyblue text-white font-bold px-5 py-3 rounded-xl shadow-lg shadow-blue-500/20"
+          >
+            <Lightbulb size={18} /> Sugerir un mercado
+          </button>
         </div>
-        {!leaderboardLoaded ? (
-          <div className="text-center py-8 bg-white rounded-xl border border-gray-200 text-gray-500">Cargando ranking...</div>
-        ) : leaderboard.length === 0 ? (
-          <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
-            <p className="text-gray-500">El ranking aparecerá cuando los usuarios configuren su nombre</p>
-          </div>
-        ) : (
-          <Leaderboard rows={leaderboard} meId={profile?.id} />
-        )}
-      </div>
+      )}
 
-      {selectedMarket && <TradeModal market={selectedMarket} side={selection.side} onClose={handleClose} />}
+      {marketsLoaded && !nothingAtAll && !filtering && <ActivityTicker events={events} />}
+
+      {showFeatured && (
+        <Section title="🔥 En tendencia">
+          <div className="-mx-4 px-4 scroll-pl-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+            <div className="flex gap-3 w-max pr-4 pb-1">
+              {trending.map((item) => (
+                <FeaturedCard key={item.key} item={item} onTrade={openTrade} />
+              ))}
+            </div>
+          </div>
+        </Section>
+      )}
+
+      {marketsLoaded && !nothingAtAll && (
+        <>
+          <SortTabs value={sort} onChange={setSort} />
+
+          {noResults && (
+            <div className="text-center py-12 bg-white rounded-3xl border border-gray-200 animate-fade-in">
+              <SearchX size={42} className="mx-auto text-gray-300 mb-3" />
+              <p className="font-semibold text-gray-700">Nada coincide con tu búsqueda</p>
+              <button
+                onClick={() => {
+                  setQuery('')
+                  setCategory('all')
+                }}
+                className="mt-3 text-polyblue font-bold text-sm"
+              >
+                Quitar filtros
+              </button>
+            </div>
+          )}
+
+          {open.length > 0 && <Grid>{open.map(renderItem)}</Grid>}
+          {open.length === 0 && !noResults && pending.length === 0 && resolved.length > 0 && (
+            <p className="text-center text-sm text-gray-400 py-6">No hay mercados abiertos ahora mismo.</p>
+          )}
+
+          {pending.length > 0 && (
+            <Section title="⏳ Esperando resultado" count={pending.length} tone="text-amber-600">
+              <Grid>{pending.map(renderItem)}</Grid>
+            </Section>
+          )}
+
+          {resolved.length > 0 && (
+            <section className="space-y-3">
+              <button
+                onClick={() => setShowResolved(!showResolved)}
+                aria-expanded={showResolved}
+                className="w-full flex items-center justify-between bg-white rounded-2xl border border-gray-200 px-4 py-3.5 shadow-card"
+              >
+                <span className="font-bold text-gray-800 flex items-center gap-2">
+                  Finalizados
+                  <span className="text-xs font-bold bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{resolved.length}</span>
+                </span>
+                <ChevronDown size={20} className={`text-gray-400 transition-transform ${showResolved ? 'rotate-180' : ''}`} />
+              </button>
+              {showResolved && (
+                <>
+                  <Grid>{resolved.slice(0, resolvedLimit).map(renderItem)}</Grid>
+                  {resolved.length > resolvedLimit && (
+                    <button
+                      onClick={() => setResolvedLimit((n) => n + RESOLVED_PAGE)}
+                      className="w-full py-3 text-sm font-bold text-polyblue"
+                    >
+                      Ver más ({resolved.length - resolvedLimit})
+                    </button>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+        </>
+      )}
     </div>
   )
 }

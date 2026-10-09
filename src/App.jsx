@@ -1,30 +1,38 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { GameProvider } from './context/GameContext'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import ErrorBoundary from './components/ErrorBoundary'
 import BottomNav from './components/BottomNav'
+import CelebrationHost from './components/CelebrationHost'
 import Navbar from './components/Navbar'
 import PageLoader from './components/PageLoader'
 import StatusBanner from './components/StatusBanner'
+import { TradeProvider } from './components/TradeSheet'
+import UpdatePrompt from './components/UpdatePrompt'
 import UsernameSetup from './components/UsernameSetup'
 
 // AuthPage se carga de inmediato (es la primera pantalla); el resto bajo demanda.
 import AuthPage from './pages/AuthPage'
+import HomePage from './pages/HomePage'
 
-const HomePage = lazy(() => import('./pages/HomePage'))
 const MarketPage = lazy(() => import('./pages/MarketPage'))
+const GroupPage = lazy(() => import('./pages/GroupPage'))
+const RankingPage = lazy(() => import('./pages/RankingPage'))
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'))
+const SuggestPage = lazy(() => import('./pages/SuggestPage'))
 const RecuerdosPage = lazy(() => import('./pages/RecuerdosPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 
+// Al ir a una pantalla nueva se vuelve arriba; al volver con "atrás" se respeta la posición.
 function ScrollToTop() {
   const { pathname } = useLocation()
+  const navType = useNavigationType()
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
+    if (navType !== 'POP') window.scrollTo(0, 0)
+  }, [pathname, navType])
   return null
 }
 
@@ -48,7 +56,6 @@ function ProfileProblem() {
 
 function AppLayout() {
   const { user, profile, loading, profileError, needsUsername, refreshProfile } = useAuth()
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
   if (loading) return <PageLoader label="Cargando FamilyMarket..." fullScreen />
   if (!user) return <Navigate to="/auth" replace />
@@ -57,24 +64,32 @@ function AppLayout() {
 
   return (
     <GameProvider>
-      <div className="min-h-screen bg-polygray-bg">
-        <Navbar />
-        <main className="pt-16 pb-20">
-          <StatusBanner />
-          <ScrollToTop />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<HomePage setIsModalOpen={setIsModalOpen} />} />
-              <Route path="/market" element={<MarketPage />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
-              <Route path="/recuerdos" element={<RecuerdosPage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </main>
-        <BottomNav isHidden={isModalOpen} />
-      </div>
+      <TradeProvider>
+        <div className="min-h-screen bg-polygray-bg">
+          <Navbar />
+          <main className="app-main">
+            <StatusBanner />
+            <ScrollToTop />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/m/:id" element={<MarketPage />} />
+                <Route path="/g/:groupId" element={<GroupPage />} />
+                <Route path="/ranking" element={<RankingPage />} />
+                <Route path="/portfolio" element={<PortfolioPage />} />
+                <Route path="/sugerir" element={<SuggestPage />} />
+                <Route path="/recuerdos" element={<RecuerdosPage />} />
+                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/market" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </main>
+          <BottomNav />
+          <CelebrationHost />
+          <UpdatePrompt />
+        </div>
+      </TradeProvider>
     </GameProvider>
   )
 }
@@ -87,10 +102,10 @@ export default function App() {
           <Router>
             <Toaster
               position="top-center"
-              containerStyle={{ top: 72 }}
+              containerStyle={{ top: 68 }}
               toastOptions={{
                 duration: 5000,
-                style: { borderRadius: '16px', padding: '14px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' },
+                style: { borderRadius: '16px', padding: '12px 14px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontSize: 14 },
               }}
             />
             <Routes>

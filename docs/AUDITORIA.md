@@ -100,3 +100,41 @@ where email like '%@loadtest.invalid';
 -- Al terminar (cascada: perfiles, acciones, operaciones):
 delete from auth.users where email like '%@loadtest.invalid';
 ```
+
+
+---
+
+# Fase 2 · Roles, funciones nuevas y correcciones (octubre 2026)
+
+## Errores corregidos
+
+| Problema | Causa | Solución |
+|---|---|---|
+| Rechazos masivos «el precio cambió» cuando varios compran a la vez | Tolerancia por defecto de 3 % | Por defecto 5 % + botón **«Reintentar a XX¢»** de un toque (refresca el precio y reenvía) |
+| La pantalla Trade saltaba al mercado más nuevo cuando el admin creaba uno | `selected` caía a `activeMarkets[0]` | Ahora cada mercado tiene su propia pantalla (`/m/:id`, `/g/:id`): nada salta |
+| Ráfaga de inicios de sesión → «Request rate limit reached» | Límite de Auth por IP | Mensaje claro + reintento automático escalonado (hasta 4 intentos) |
+| No había forma de recuperar una contraseña ni cambiar un nombre | — | El dueño puede restablecer contraseñas (cierra sus sesiones) y renombrar jugadores |
+| Una resolución equivocada no se podía deshacer | — | `admin_reopen_market` (solo dueño): revierte los pagos, borra avisos de victoria/derrota y avisa a todos |
+| Un despliegue podía recargar la app a mitad de una compra | PWA en `autoUpdate` + `skipWaiting` | PWA en modo `prompt`: banner «Hay una versión nueva» y se aplica solo al tocarlo |
+| El sondeo repetía campos estáticos y mercados cerrados | `select` completo cada 12 s | `get_market_prices` ligero + descarga de textos/fotos una sola vez (`static_rev`) |
+| `image_url` existía pero nunca se mostraba | — | Fotos reales con placeholder de color, carga diferida y WebP |
+| **«Nueva partida» habría fallado** | `archive.markets` se creó con `LIKE public.markets` y `markets` ganó columnas | `archive.snapshot_current_game` con listas de columnas explícitas (migración 008); probado archivando y reiniciando en una transacción de prueba |
+
+## Seguridad de lo nuevo
+
+- Todo sigue entrando por RPC `SECURITY DEFINER`; las tablas nuevas (`notifications`, `market_suggestions`,
+  `networth_snapshots`) no tienen privilegios para `anon` ni `authenticated`.
+- Moderadores: `is_staff()` en servidor; las herramientas destructivas (anular, deshacer, saldos, nombres,
+  contraseñas, reinicio, nombrar moderadores) exigen `is_admin()`. Probado que un moderador no puede usarlas.
+- El filtro fantasma se aplica también a `get_market_prices`, `get_recent_activity`, perfiles y avisos.
+- Fotos: bucket `market-images` público de lectura, escritura solo staff, solo `image/webp` y `image/jpeg`, 1 MB;
+  el servidor solo acepta URLs que empiecen por la URL pública de ese bucket.
+- Cierre por fecha: `buy_shares`/`sell_shares` rechazan operaciones después de `closes_at` usando la hora del servidor.
+
+## Pruebas de esta fase
+
+- `node scripts/loadtest.mjs feat`: 76 verificaciones (roles, cierre por fecha, avisos, deshacer resolución,
+  sugerencias, visibilidad del filtro fantasma, grupos, carrera de patrimonio, perfiles, almacenamiento).
+- `sec` (35), `func` (57) y `conc` (17) actualizadas al nuevo esquema: todas en verde.
+- `npm run test:ui`: 3 recorridos E2E (jugador, dueño, alta) en verde.
+- Benchmark en la base: 1,35 ms por compra (150 compras seguidas), igual que antes de las funciones nuevas.

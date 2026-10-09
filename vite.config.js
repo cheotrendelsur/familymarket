@@ -6,7 +6,8 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': la versión nueva espera hasta que el jugador toque "Actualizar" (ver src/lib/pwa.js).
+      registerType: 'prompt',
       includeAssets: ['icon-*.png'],
       manifest: {
         id: '/',
@@ -30,17 +31,18 @@ export default defineConfig(({ mode }) => ({
         // SPA: cualquier ruta navegable sirve index.html (también sin conexión).
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
+        // Sin skipWaiting: un despliegue nunca recarga la app en medio de una compra.
         // IMPORTANTE: no se cachea la API de Supabase. Con datos financieros en vivo
         // un caché "network-first" puede mostrar saldos/precios viejos o de otra cuenta.
         runtimeCaching: [
           {
+            // Fotos de mercados (WebP/JPEG livianos, nombre único por foto => seguro cachearlas)
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'images-cache',
-              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              expiration: { maxEntries: 150, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],

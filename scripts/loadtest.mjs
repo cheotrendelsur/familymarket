@@ -3,7 +3,7 @@
 //
 // Requiere usuarios de prueba (lt_00@... admin, lt_01..lt_13) creados aparte y un
 // archivo de credenciales fuera del repo:
-//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|conc|all]
+//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|feat|conc|all]
 // testenv.json: { "password": "...", "prefix": "lt_", "domain": "loadtest.invalid", "count": 14 }
 // =====================================================================
 import { createClient } from '@supabase/supabase-js'
@@ -142,14 +142,23 @@ async function phaseSecurity(U, C) {
     ['admin_update_balance', { p_user_id: me.id, p_amount: 5000 }],
     ['delete_market_and_refund', { p_market_id: fake }],
     ['resolve_market', { p_market_id: fake, p_outcome: 'YES' }],
-    ['admin_create_market', { p_question: '[TEST] hacker market' }],
-    ['admin_create_market_group', { p_topic: 'x', p_options: ['a', 'b'] }],
+    ['staff_create_market', { p_question: '[TEST] hacker market' }],
+    ['staff_create_market_group', { p_topic: 'x', p_options: ['a', 'b'] }],
+    ['staff_update_market', { p_market_id: fake, p_patch: { question: 'hack' } }],
+    ['staff_list_players', {}],
+    ['staff_list_suggestions', { p_status: 'pending' }],
+    ['staff_review_suggestion', { p_id: fake, p_action: 'approve' }],
     ['admin_list_players', {}],
+    ['admin_set_moderator', { p_user_id: me.id, p_value: true }],
+    ['admin_rename_player', { p_user_id: me.id, p_username: 'hacker' }],
+    ['admin_reset_password', { p_user_id: me.id, p_new_password: 'hacker123' }],
+    ['admin_reopen_market', { p_market_id: fake }],
+    ['admin_recent_actions', { p_limit: 5 }],
     ['admin_archive_and_reset', { p_title: 'x', p_slug: 'abc-123' }],
   ]
   for (const [fn, args] of tests) {
     const r = await call(c, fn, args)
-    check(`RPC admin «${fn}» rechazada para no-admin`, !!r.error && /administrador|permission/i.test(msg(r)), msg(r))
+    check(`RPC privilegiada «${fn}» rechazada para un jugador normal`, !!r.error && /administrador|moderador|dueño|permission/i.test(msg(r)), msg(r))
   }
   check('saldo sigue en 1000 tras intentar admin_update_balance', near(await getBalance(c, me.id), 1000, 1e-4))
 
@@ -196,7 +205,7 @@ async function phaseFunctional(U, C) {
   const id1 = U[1].id
   const id2 = U[2].id
 
-  const created = await call(admin, 'admin_create_market', { p_question: '[TEST] ¿Funciona el mercado A?', p_description: 'prueba' })
+  const created = await call(admin, 'staff_create_market', { p_question: '[TEST] ¿Funciona el mercado A?', p_description: 'prueba' })
   check('admin crea mercado', !created.error && typeof created.data === 'string', msg(created))
   const A = created.data
   const mA = await getMarket(admin, A)
@@ -204,9 +213,9 @@ async function phaseFunctional(U, C) {
   const hist0 = await admin.rpc('get_market_history', { p_market_id: A, p_limit: 50 })
   check('historial inicial tiene 1 punto a 50¢', hist0.data?.length === 1 && near(Number(hist0.data[0].yes_price), 0.5))
 
-  const grp = await call(admin, 'admin_create_market_group', { p_topic: '[TEST] ¿Quién gana?', p_options: ['[TEST] Papá', ' [TEST] Mamá ', '', '[TEST] Tío'] })
+  const grp = await call(admin, 'staff_create_market_group', { p_topic: '[TEST] ¿Quién gana?', p_options: ['[TEST] Papá', ' [TEST] Mamá ', '', '[TEST] Tío'] })
   check('admin crea mercado múltiple atómico (3 opciones, ignora vacías)', !grp.error && grp.data?.created === 3, msg(grp))
-  const hid = await call(admin, 'admin_create_market', { p_question: '[TEST] Mercado oculto para lt_02', p_target_users: [id2] })
+  const hid = await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado oculto para lt_02', p_target_users: [id2] })
   const H = hid.data
   const seen2 = await p2.from('markets').select('id').eq('id', H)
   const seen1 = await p1.from('markets').select('id').eq('id', H)
@@ -293,7 +302,7 @@ async function phaseFunctional(U, C) {
   // --- anulación: revierte todo el efecto del mercado ---
   const bal1 = await getBalance(p1, id1)
   const bal2 = await getBalance(p2, id2)
-  const B = (await call(admin, 'admin_create_market', { p_question: '[TEST] Mercado B (se anula)' })).data
+  const B = (await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado B (se anula)' })).data
   await call(p1, 'buy_shares', { p_market_id: B, p_side: 'YES', p_investment: 120 })
   await call(p2, 'buy_shares', { p_market_id: B, p_side: 'NO', p_investment: 80 })
   const owned = (await getShares(p1, B)).YES
@@ -343,7 +352,7 @@ async function phaseConcurrency(U, C) {
 
   // ---------- 3a: estampida de 10 jugadores × 15 compras simultáneas ----------
   section('CONCURRENCIA 1 · estampida: 10 jugadores × 15 compras simultáneas en UN mercado')
-  const C1 = (await call(admin, 'admin_create_market', { p_question: '[TEST] Estampida' })).data
+  const C1 = (await call(admin, 'staff_create_market', { p_question: '[TEST] Estampida' })).data
   const players = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
   const tasks = []
   const spent = Object.fromEntries(players.map((i) => [i, 0]))
@@ -400,7 +409,7 @@ async function phaseConcurrency(U, C) {
 
   // ---------- 3b: un usuario martilleando ----------
   section('CONCURRENCIA 2 · un usuario lanza 100 compras a la vez (límite diario = 60)')
-  const D = (await call(admin, 'admin_create_market', { p_question: '[TEST] Límite diario' })).data
+  const D = (await call(admin, 'staff_create_market', { p_question: '[TEST] Límite diario' })).data
   const hammer = await Promise.all(
     Array.from({ length: 100 }, () => call(C[11], 'buy_shares', { p_market_id: D, p_side: 'YES', p_investment: 1, p_max_price: 1, p_request_id: newRequestId() }))
   )
@@ -412,7 +421,7 @@ async function phaseConcurrency(U, C) {
 
   // ---------- 3c: doble gasto ----------
   section('CONCURRENCIA 3 · doble gasto: $1000 de saldo, 25 compras simultáneas de $100')
-  const E = (await call(admin, 'admin_create_market', { p_question: '[TEST] Doble gasto' })).data
+  const E = (await call(admin, 'staff_create_market', { p_question: '[TEST] Doble gasto' })).data
   const dbl = await Promise.all(
     Array.from({ length: 25 }, () => call(C[12], 'buy_shares', { p_market_id: E, p_side: 'NO', p_investment: 100, p_max_price: 1, p_request_id: newRequestId() }))
   )
@@ -423,7 +432,7 @@ async function phaseConcurrency(U, C) {
 
   // ---------- 3d: idempotencia concurrente ----------
   section('CONCURRENCIA 4 · idempotencia: 20 envíos simultáneos con el MISMO request_id')
-  const F = (await call(admin, 'admin_create_market', { p_question: '[TEST] Idempotencia' })).data
+  const F = (await call(admin, 'staff_create_market', { p_question: '[TEST] Idempotencia' })).data
   const sameReq = newRequestId()
   const idem = await Promise.all(
     Array.from({ length: 20 }, () => call(C[13], 'buy_shares', { p_market_id: F, p_side: 'YES', p_investment: 40, p_max_price: 1, p_request_id: sameReq }))
@@ -437,7 +446,7 @@ async function phaseConcurrency(U, C) {
 
   // ---------- 3e: resolver bajo fuego ----------
   section('CONCURRENCIA 5 · el admin resuelve mientras 6 jugadores compran y venden sin parar')
-  const G = (await call(admin, 'admin_create_market', { p_question: '[TEST] Resolución bajo fuego' })).data
+  const G = (await call(admin, 'staff_create_market', { p_question: '[TEST] Resolución bajo fuego' })).data
   const traders = [1, 2, 3, 4, 5, 6]
   const balBefore = {}
   for (const i of traders) balBefore[i] = await getBalance(C[i], U[i].id)
@@ -482,6 +491,235 @@ async function phaseConcurrency(U, C) {
   check('INVARIANTE dinero: saldo final = saldo previo + Σ(ventas+pagos) − Σ compras (6 jugadores)', conserved)
 }
 
+
+// =====================================================================
+const TINY_WEBP = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64')
+
+async function phaseFeatures(U, C) {
+  const admin = C[0]
+  const [p1, p2, p3] = [C[1], C[2], C[3]]
+  const [id1, id2, id3] = [U[1].id, U[2].id, U[3].id]
+
+  // Las fases anteriores dejan avisos sin leer a los jugadores de prueba: se limpian primero.
+  for (const c of [p1, p2, p3]) {
+    const st = await call(c, 'get_session_state')
+    const ids = (st.data?.notifications || []).map((n) => n.id)
+    if (ids.length) await call(c, 'mark_notifications_seen', { p_ids: ids })
+  }
+
+  section('ROLES · moderadores (los nombra el dueño)')
+  const denied = await call(p1, 'staff_create_market', { p_question: '[TEST] jugador no puede crear' })
+  check('jugador normal NO puede crear mercados', !!denied.error && /moderadores/i.test(msg(denied)), msg(denied))
+  const mod1 = await call(admin, 'admin_set_moderator', { p_user_id: id1, p_value: true })
+  check('el dueño nombra moderador a lt_01', !mod1.error && mod1.data?.is_moderator === true, msg(mod1))
+  const modSelf = await call(p2, 'admin_set_moderator', { p_user_id: id2, p_value: true })
+  check('un jugador NO puede nombrarse moderador', !!modSelf.error, msg(modSelf))
+
+  const mm = await call(p1, 'staff_create_market', { p_question: '[TEST] Mercado creado por moderador', p_category: 'familia' })
+  check('moderador crea mercados', !mm.error && typeof mm.data === 'string', msg(mm))
+  const MM = mm.data
+  const modPlayers = await call(p1, 'staff_list_players')
+  check('moderador ve la lista de jugadores (para el filtro fantasma)', (modPlayers.data?.length ?? 0) >= 9, msg(modPlayers))
+  const modLog = await call(p1, 'admin_recent_actions', { p_limit: 5 })
+  check('moderador ve el registro de actividad', !modLog.error && (modLog.data?.length ?? 0) > 0, msg(modLog))
+  for (const [fn, args] of [
+    ['admin_list_players', {}],
+    ['admin_update_balance', { p_user_id: id2, p_amount: 10 }],
+    ['delete_market_and_refund', { p_market_id: MM }],
+    ['admin_reopen_market', { p_market_id: MM }],
+    ['admin_rename_player', { p_user_id: id2, p_username: 'zzz_hack' }],
+    ['admin_reset_password', { p_user_id: id2, p_new_password: 'hacker123' }],
+    ['admin_set_moderator', { p_user_id: id2, p_value: true }],
+    ['admin_archive_and_reset', { p_title: 'x', p_slug: 'abc-123' }],
+  ]) {
+    const r = await call(p1, fn, args)
+    check(`moderador NO puede usar «${fn}» (solo dueño)`, !!r.error, msg(r))
+  }
+  const pf = await p1.from('profiles').update({ is_moderator: false }).eq('id', id1).select()
+  check('un jugador no puede cambiarse permisos por la API', !!pf.error || (pf.data?.length ?? 0) === 0)
+
+  section('CIERRE POR FECHA · countdown y bloqueo de apuestas')
+  const past = await call(p1, 'staff_create_market', { p_question: '[TEST] cierre en el pasado', p_closes_at: new Date(Date.now() - 60000).toISOString() })
+  check('no se puede crear un mercado que ya cerró', !!past.error && /futuro/i.test(msg(past)), msg(past))
+  const soon = await call(p1, 'staff_create_market', { p_question: '[TEST] Mercado con cierre', p_closes_at: new Date(Date.now() + 3600e3).toISOString() })
+  const S = soon.data
+  check('crea mercado con fecha de cierre', !soon.error && typeof S === 'string', msg(soon))
+  const bS = await call(p2, 'buy_shares', { p_market_id: S, p_side: 'YES', p_investment: 20 })
+  check('se puede comprar antes de la hora de cierre', !bS.error, msg(bS))
+  const closeNow = await call(p1, 'staff_update_market', { p_market_id: S, p_patch: { closes_at: new Date(Date.now() - 30000).toISOString() }, p_apply_group: false })
+  check('moderador cierra las apuestas ya (closes_at = ahora)', !closeNow.error, msg(closeNow))
+  const bS2 = await call(p2, 'buy_shares', { p_market_id: S, p_side: 'YES', p_investment: 20 })
+  check('COMPRA después del cierre rechazada', !!bS2.error && /cerraron/i.test(msg(bS2)), msg(bS2))
+  const sS2 = await call(p2, 'sell_shares', { p_market_id: S, p_side: 'YES', p_shares_to_sell: 1 })
+  check('VENTA después del cierre rechazada', !!sS2.error && /cerraron/i.test(msg(sS2)), msg(sS2))
+  const prices = await call(p2, 'get_market_prices')
+  const rowS = prices.data?.find((r) => r.id === S)
+  check('get_market_prices expone closes_at y sigue sin resolver', !!rowS && !!rowS.closes_at && rowS.closed === false, JSON.stringify(rowS))
+  const extend = await call(p1, 'staff_update_market', { p_market_id: S, p_patch: { closes_at: new Date(Date.now() + 3600e3).toISOString() }, p_apply_group: false })
+  const bS3 = await call(p2, 'buy_shares', { p_market_id: S, p_side: 'YES', p_investment: 5 })
+  check('extender el cierre reabre las apuestas', !extend.error && !bS3.error, msg(extend) + msg(bS3))
+
+  section('NOTIFICACIONES · victoria, derrota y "deshacer resolución"')
+  const A = (await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado de notificaciones', p_category: 'juegos' })).data
+  const bal2a = await getBalance(p2, id2)
+  await call(p1, 'buy_shares', { p_market_id: A, p_side: 'YES', p_investment: 100 })
+  await call(p2, 'buy_shares', { p_market_id: A, p_side: 'NO', p_investment: 60 })
+  await call(p3, 'buy_shares', { p_market_id: A, p_side: 'YES', p_investment: 10 })
+  const bal1b = await getBalance(p1, id1)
+  const sess0 = await call(p1, 'get_session_state')
+  check('get_session_state: hora del servidor, movimientos y 0 avisos', !!sess0.data?.server_now && sess0.data?.daily?.limit === 60 && sess0.data?.notifications?.length === 0, JSON.stringify(sess0.data))
+  const res = await call(p1, 'resolve_market', { p_market_id: A, p_outcome: 'YES' }) // lt_01 es moderador
+  check('moderador resuelve el mercado', !res.error && res.data?.success, msg(res))
+  const n1 = await call(p1, 'get_session_state')
+  const n2 = await call(p2, 'get_session_state')
+  const won = n1.data?.notifications?.find((n) => n.kind === 'MARKET_WON' && n.payload?.question === '[TEST] Mercado de notificaciones')
+  const lost = n2.data?.notifications?.find((n) => n.kind === 'MARKET_LOST')
+  check('el ganador recibe MARKET_WON con el pago y la ganancia', !!won && Number(won.payload.payout) > 100 && Number(won.payload.profit) > 0, JSON.stringify(won))
+  check('el perdedor recibe MARKET_LOST', !!lost && Number(lost.payload.profit) < 0, JSON.stringify(lost))
+  const sameUser = await call(p3, 'get_session_state')
+  check('cada jugador solo ve SUS avisos', sameUser.data?.notifications?.length === 1 && sameUser.data.notifications[0].kind === 'MARKET_WON')
+  await call(p1, 'mark_notifications_seen', { p_ids: [won.id] })
+  const n1b = await call(p1, 'get_session_state')
+  check('mark_notifications_seen quita el aviso', n1b.data?.notifications?.length === 0)
+  await call(p2, 'mark_notifications_seen', { p_ids: [sameUser.data.notifications[0].id] })
+  const n3b = await call(p3, 'get_session_state')
+  check('no se pueden marcar avisos de otro jugador', n3b.data?.notifications?.length === 1)
+  const bal1c = await getBalance(p1, id1)
+  check('pago aplicado: saldo ganador sube', bal1c > bal1b, `${bal1b} -> ${bal1c}`)
+
+  const reopenDenied = await call(p1, 'admin_reopen_market', { p_market_id: A })
+  check('el moderador NO puede deshacer una resolución', !!reopenDenied.error)
+  const reopen = await call(admin, 'admin_reopen_market', { p_market_id: A })
+  check('el dueño deshace la resolución', !reopen.error && reopen.data?.success, msg(reopen))
+  check('saldo del ganador vuelve a lo anterior al pago', near(await getBalance(p1, id1), bal1b, 1e-3), `${await getBalance(p1, id1)} vs ${bal1b}`)
+  const mkA = await getMarket(admin, A)
+  check('el mercado vuelve a estar abierto', mkA.closed === false && mkA.outcome === 'PENDING')
+  const n1c = await call(p1, 'get_session_state')
+  const n3c = await call(p3, 'get_session_state')
+  check(
+    'los avisos viejos de victoria desaparecen y llega MARKET_REOPENED',
+    n1c.data?.notifications?.some((n) => n.kind === 'MARKET_REOPENED') &&
+      !n1c.data?.notifications?.some((n) => n.kind === 'MARKET_WON') &&
+      n3c.data?.notifications?.some((n) => n.kind === 'MARKET_REOPENED')
+  )
+  const res2 = await call(admin, 'resolve_market', { p_market_id: A, p_outcome: 'NO' })
+  check('se puede volver a resolver bien (ahora gana NO)', !res2.error && res2.data?.success, msg(res2))
+  const bal2b = await getBalance(p2, id2)
+  check('el que apostó NO cobra tras la corrección', bal2b > bal2a, `${bal2a} -> ${bal2b}`)
+
+  const profile = await call(p1, 'get_player_profile', { p_user_id: id2 })
+  check('perfil: aciertos/rachas/ganancia realizada', profile.data?.wins >= 1 && profile.data?.realized_pl > 0 && profile.data?.win_rate !== undefined, JSON.stringify(profile.data))
+  const profileMe = await call(p1, 'get_player_profile', { p_user_id: id1 })
+  check('perfil: el perdedor suma una pérdida', profileMe.data?.losses >= 1, JSON.stringify(profileMe.data))
+  const noUser = await call(p1, 'get_player_profile', { p_user_id: '00000000-0000-0000-0000-000000000001' })
+  check('perfil de jugador inexistente da error claro', !!noUser.error)
+
+  section('SUGERENCIAS · jugador propone, staff aprueba o rechaza')
+  const bad1 = await call(p3, 'suggest_market', { p_question: 'corta' })
+  check('sugerencia demasiado corta rechazada', !!bad1.error, msg(bad1))
+  const bad2 = await call(p3, 'suggest_market', { p_question: '[TEST] ¿Opciones inválidas?', p_options: ['solo una', 'otra', ''].slice(0, 1) })
+  check('sugerencia con 1 sola opción rechazada', !!bad2.error, msg(bad2))
+  const sg1 = await call(p3, 'suggest_market', { p_question: '[TEST] ¿Sugerencia simple del jugador?', p_category: 'comida' })
+  const sg2 = await call(p3, 'suggest_market', { p_question: '[TEST] ¿Quién gana la sugerencia?', p_options: ['[TEST] Papá', '[TEST] Mamá'] })
+  const sg3 = await call(p3, 'suggest_market', { p_question: '[TEST] ¿Tercera sugerencia pendiente?' })
+  check('3 sugerencias pendientes aceptadas', !sg1.error && !sg2.error && !sg3.error, msg(sg1) + msg(sg2) + msg(sg3))
+  const sg4 = await call(p3, 'suggest_market', { p_question: '[TEST] ¿Cuarta sugerencia pendiente?' })
+  check('la cuarta pendiente se rechaza (máx. 3)', !!sg4.error && /3 sugerencias/i.test(msg(sg4)), msg(sg4))
+  const mine = await call(p3, 'get_my_suggestions')
+  check('el jugador ve sus propias sugerencias', mine.data?.length >= 3)
+  const sgId = (q) => mine.data?.find((x) => x.question === q)?.id
+  const idSimple = sgId('[TEST] ¿Sugerencia simple del jugador?')
+  const idMulti = sgId('[TEST] ¿Quién gana la sugerencia?')
+  const idThird = sgId('[TEST] ¿Tercera sugerencia pendiente?')
+  const others = await call(p2, 'get_my_suggestions')
+  check('…y no ve las de otros', !others.data?.some((x) => x.id === idSimple))
+  const pend = await call(p1, 'staff_list_suggestions', { p_status: 'pending' })
+  check('moderador ve las sugerencias pendientes (con nombre)', pend.data?.some((x) => x.id === idSimple && x.username), msg(pend))
+  const sess = await call(p1, 'get_session_state')
+  check('staff ve el contador de sugerencias pendientes', sess.data?.pending_suggestions >= 3, JSON.stringify(sess.data))
+  const sessPlayer = await call(p2, 'get_session_state')
+  check('un jugador normal NO recibe ese contador', sessPlayer.data?.pending_suggestions === null)
+
+  const ap1 = await call(p1, 'staff_review_suggestion', { p_id: idSimple, p_action: 'approve', p_closes_at: new Date(Date.now() + 7200e3).toISOString() })
+  check('moderador aprueba una sugerencia simple (con cierre)', !ap1.error && ap1.data?.ids?.length === 1, msg(ap1))
+  const ap2 = await call(admin, 'staff_review_suggestion', { p_id: idMulti, p_action: 'approve', p_question: '[TEST] ¿Quién gana (editado)?' })
+  check('dueño aprueba una sugerencia con opciones → mercado múltiple', !ap2.error && ap2.data?.ids?.length === 2 && !!ap2.data?.group_id, msg(ap2))
+  const rj = await call(admin, 'staff_review_suggestion', { p_id: idThird, p_action: 'reject', p_reason: 'Ya existe uno parecido' })
+  check('se puede rechazar con motivo', !rj.error && rj.data?.status === 'rejected', msg(rj))
+  const twice = await call(admin, 'staff_review_suggestion', { p_id: idThird, p_action: 'approve' })
+  check('no se puede revisar dos veces', !!twice.error && /ya fue revisada/i.test(msg(twice)), msg(twice))
+  const sn = await call(p3, 'get_session_state')
+  const kinds = (sn.data?.notifications || []).map((n) => n.kind)
+  check('el autor recibe avisos de aprobada ×2 y rechazada ×1', kinds.filter((k) => k === 'SUGGESTION_APPROVED').length === 2 && kinds.includes('SUGGESTION_REJECTED'), kinds.join(','))
+  const rejNote = sn.data.notifications.find((n) => n.kind === 'SUGGESTION_REJECTED')
+  check('el aviso de rechazo trae el motivo', rejNote?.payload?.reason === 'Ya existe uno parecido')
+  const published = await getMarket(admin, ap1.data.ids[0])
+  check('la sugerencia aprobada quedó publicada con su cierre y su categoría', !!published && !!published.closes_at && published.category === 'comida')
+
+  section('VISIBILIDAD · filtro fantasma en precios, feed y perfiles')
+  const H = (await call(admin, 'staff_create_market', { p_question: '[TEST] Sorpresa para lt_02', p_target_users: [id2] })).data
+  await call(p3, 'buy_shares', { p_market_id: H, p_side: 'YES', p_investment: 33 })
+  const pr2 = await call(p2, 'get_market_prices')
+  const pr3 = await call(p3, 'get_market_prices')
+  check('get_market_prices NO muestra el mercado oculto al jugador sorprendido', !pr2.data?.some((r) => r.id === H) && pr3.data?.some((r) => r.id === H))
+  const act2 = await call(p2, 'get_recent_activity', { p_limit: 50 })
+  const act3 = await call(p3, 'get_recent_activity', { p_limit: 50 })
+  check('el feed en vivo NO filtra movimientos del mercado oculto', !act2.data?.some((e) => e.market_id === H) && act3.data?.some((e) => e.market_id === H && e.kind === 'BUY'))
+  const hh = await call(p2, 'get_market_history', { p_market_id: H, p_limit: 20 })
+  check('el historial del mercado oculto es visible solo con RLS (no rompe)', !hh.error)
+  const prof3 = await call(p2, 'get_player_profile', { p_user_id: id3 })
+  const prof3self = await call(p3, 'get_player_profile', { p_user_id: id3 })
+  check('el perfil de otro NO cuenta apuestas en mercados que yo no veo', prof3self.data?.trades === prof3.data?.trades + 1, `${prof3self.data?.trades} vs ${prof3.data?.trades}`)
+
+  const act = await call(p2, 'get_recent_activity', { p_limit: 20, p_market_id: A })
+  check('feed por mercado devuelve solo ese mercado', act.data?.length > 0 && act.data.every((e) => e.market_id === A))
+  const feed = await call(p2, 'get_recent_activity', { p_limit: 5 })
+  check('el feed global respeta el límite y viene ordenado', feed.data?.length <= 5 && feed.data.every((e, i, a) => i === 0 || Date.parse(a[i - 1].at) >= Date.parse(e.at)))
+
+  section('GRUPOS · historial y carrera de patrimonio')
+  const grp = await call(admin, 'staff_create_market_group', { p_topic: '[TEST] ¿Quién come más?', p_options: ['[TEST] A', '[TEST] B', '[TEST] C'], p_category: 'comida' })
+  const gid = grp.data?.group_id
+  await call(p1, 'buy_shares', { p_market_id: grp.data.ids[0], p_side: 'YES', p_investment: 30 })
+  const gh = await call(p1, 'get_group_history', { p_group_id: gid, p_limit: 50 })
+  check('get_group_history devuelve puntos de todas las opciones', new Set((gh.data || []).map((r) => r.market_id)).size === 3, `n=${gh.data?.length}`)
+  const gm = await admin.from('markets').select('id, group_id, group_topic, category').eq('group_id', gid)
+  check('las 3 opciones comparten group_id, tópico y categoría', gm.data?.length === 3 && gm.data.every((m) => m.group_topic === '[TEST] ¿Quién come más?' && m.category === 'comida'))
+  const race = await call(p1, 'get_networth_race', { p_max_points: 20 })
+  const racers = new Set((race.data || []).map((r) => r.user_id))
+  check('get_networth_race trae a todos los jugadores', racers.size >= 9 && race.data.every((r) => r.username), `jugadores=${racers.size}`)
+  const perPlayer = {}
+  ;(race.data || []).forEach((r) => (perPlayer[r.user_id] = (perPlayer[r.user_id] || 0) + 1))
+  check('la serie se muestrea a ≈20 puntos por jugador como máximo', Object.values(perPlayer).every((n) => n <= 24), JSON.stringify(Object.values(perPlayer).slice(0, 5)))
+  const editDesc = await call(admin, 'staff_update_market', { p_market_id: grp.data.ids[1], p_patch: { description: '[TEST] descripción compartida', category: 'viaje' }, p_apply_group: true })
+  const gm2 = await admin.from('markets').select('description, category').eq('group_id', gid)
+  check('editar un mercado múltiple actualiza descripción y categoría en TODAS las opciones', !editDesc.error && gm2.data.every((m) => m.description === '[TEST] descripción compartida' && m.category === 'viaje'), msg(editDesc))
+
+  section('ALMACENAMIENTO · fotos de mercados (solo staff escribe)')
+  const nm = `test/${Date.now()}-${Math.random().toString(16).slice(2, 8)}.webp`
+  const upPlayer = await p3.storage.from('market-images').upload(nm, TINY_WEBP, { contentType: 'image/webp' })
+  check('un jugador normal NO puede subir fotos', !!upPlayer.error, upPlayer.error?.message)
+  const upAdmin = await admin.storage.from('market-images').upload(nm, TINY_WEBP, { contentType: 'image/webp', upsert: false })
+  check('el dueño sube una foto WebP', !upAdmin.error, upAdmin.error?.message)
+  const nmMod = nm.replace('.webp', '-m.webp')
+  const upMod = await p1.storage.from('market-images').upload(nmMod, TINY_WEBP, { contentType: 'image/webp' })
+  check('un moderador sube una foto WebP', !upMod.error, upMod.error?.message)
+  const upBad = await admin.storage.from('market-images').upload(`test/${Date.now()}.txt`, Buffer.from('hola'), { contentType: 'text/plain' })
+  check('solo se aceptan imágenes (WebP/JPEG): text/plain rechazado', !!upBad.error, upBad.error?.message)
+  const pub = admin.storage.from('market-images').getPublicUrl(nm).data.publicUrl
+  const resp = await fetch(pub)
+  check('la foto es pública para cualquiera (CDN) y llega como image/webp', resp.status === 200 && /image\/webp/.test(resp.headers.get('content-type') || ''), `status=${resp.status}`)
+  const badImg = await call(admin, 'staff_create_market', { p_question: '[TEST] foto externa', p_image_url: 'https://evil.example.com/x.png' })
+  check('no se aceptan imágenes de otros sitios (solo las subidas desde la app)', !!badImg.error && /subirse desde la app/i.test(msg(badImg)), msg(badImg))
+  const okImg = await call(admin, 'staff_create_market', { p_question: '[TEST] con foto', p_image_url: pub, p_image_thumb_url: pub, p_image_color: '#336699' })
+  check('mercado con foto subida desde la app se crea (banner + miniatura + color)', !okImg.error, msg(okImg))
+  await admin.storage.from('market-images').remove([nm, nmMod])
+
+  // limpieza de roles
+  await call(admin, 'admin_set_moderator', { p_user_id: id1, p_value: false })
+  const afterRole = await call(p1, 'staff_list_players')
+  check('el dueño quita el permiso de moderador y se pierde el acceso', !!afterRole.error, msg(afterRole))
+}
+
 // =====================================================================
 async function cleanupMarkets(admin) {
   const { data } = await admin.from('markets').select('id, question').like('question', '[TEST]%')
@@ -501,6 +739,10 @@ try {
   if (PHASE === 'func' || PHASE === 'all') {
     await phaseFunctional(U, C)
     await cleanupMarkets(C[0]) // cada fase parte de saldos y movimientos limpios
+  }
+  if (PHASE === 'feat' || PHASE === 'all') {
+    await phaseFeatures(U, C)
+    await cleanupMarkets(C[0])
   }
   if (PHASE === 'conc' || PHASE === 'all') await phaseConcurrency(U, C)
 } finally {

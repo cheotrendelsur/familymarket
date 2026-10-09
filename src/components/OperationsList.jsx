@@ -1,4 +1,4 @@
-import { cents, dateTime, money, shares as fmtShares } from '../lib/format'
+import { cents, dateTime, money, shares as fmtShares, sideLabel } from '../lib/format'
 
 const LABELS = {
   BUY: { text: 'Compra', badge: 'bg-blue-100 text-blue-700' },
@@ -12,10 +12,10 @@ const LABELS = {
  */
 export default function OperationsList({ ops, emptyText = 'Sin operaciones' }) {
   if (!ops || ops.length === 0) {
-    return <div className="text-center py-8 bg-white rounded-xl border border-gray-200 text-gray-500">{emptyText}</div>
+    return <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 text-gray-500">{emptyText}</div>
   }
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-card divide-y divide-gray-100">
       {ops.map((op, i) => {
         const label = LABELS[op.type] || LABELS.BUY
         return (
@@ -30,7 +30,7 @@ export default function OperationsList({ ops, emptyText = 'Sin operaciones' }) {
                       op.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'
                     }`}
                   >
-                    {op.side}
+                    {sideLabel(op.side)}
                   </span>
                   <span className="text-xs text-gray-500">
                     {fmtShares(op.shares)} acc. a {cents(op.price)}

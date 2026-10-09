@@ -27,7 +27,7 @@ const time = async (fn) => {
   return performance.now() - t
 }
 
-const market = (await admin.rpc('admin_create_market', { p_question: '[TEST] latencia' })).data
+const market = (await admin.rpc('staff_create_market', { p_question: '[TEST] latencia' })).data
 const reads = []
 const trades = []
 for (let i = 0; i < 25; i += 1) {

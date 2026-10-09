@@ -61,7 +61,7 @@ export default function UsernameSetup({ onComplete }) {
               autoCorrect="off"
               maxLength={20}
             />
-            <p className="text-xs text-gray-500 mt-1.5">3-20 caracteres. Solo letras, números y guiones bajos (_). No podrás cambiarlo después.</p>
+            <p className="text-xs text-gray-500 mt-1.5">3-20 caracteres. Solo letras, números y guiones bajos (_). Si luego necesitas cambiarlo, pídeselo al dueño.</p>
           </div>
 
           {error && (

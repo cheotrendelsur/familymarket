@@ -18,7 +18,11 @@ export default function StatusBanner() {
 
   const seconds = lastUpdated ? Math.round((now - lastUpdated) / 1000) : null
   return (
-    <div className="sticky top-16 z-30 bg-amber-100 border-b border-amber-300 text-amber-900 text-sm px-4 py-2 flex items-center justify-center gap-2" role="status">
+    <div
+      className="sticky z-30 bg-amber-100 border-b border-amber-300 text-amber-900 text-sm px-4 py-2 flex items-center justify-center gap-2"
+      style={{ top: 'calc(56px + env(safe-area-inset-top))' }}
+      role="status"
+    >
       <WifiOff size={16} />
       <span>
         {offline ? 'Sin conexión' : 'Reconectando…'}

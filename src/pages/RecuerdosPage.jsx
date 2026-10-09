@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Calendar, CheckCircle, Crown, History, Users, XCircle } from 'lucide-react'
 import { rpc } from '../lib/api'
 import { buildPosition, groupPositions } from '../lib/portfolio'
-import { dateShort, friendlyError, money } from '../lib/format'
+import { dateShort, friendlyError, money, sideLabel } from '../lib/format'
 import { useAuth } from '../context/AuthContext'
 import { useToggleSet } from '../hooks/useToggleSet'
 import GroupAccordion from '../components/GroupAccordion'
@@ -184,7 +184,7 @@ function SeasonDetail({ slug, onBack }) {
         }`}
       >
         {m.outcome === 'YES' ? <CheckCircle size={16} /> : m.outcome === 'NO' ? <XCircle size={16} /> : null}
-        {m.closed ? `Ganó ${m.outcome}` : 'Sin resolver'}
+        {m.closed ? `Ganó ${sideLabel(m.outcome)}` : 'Sin resolver'}
       </div>
     </div>
   )

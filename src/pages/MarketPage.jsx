@@ -1,224 +1,170 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Lock, TrendingUp } from 'lucide-react'
-import { rpc } from '../lib/api'
-import { groupMarkets } from '../lib/markets'
-import { yesPrice } from '../lib/trading'
-import { dateTime, timeShort } from '../lib/format'
+import { useMemo } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ChevronRight, Layers, SearchX } from 'lucide-react'
 import { useGame } from '../context/GameContext'
-import { usePolling } from '../hooks/usePolling'
-import { useToggleSet } from '../hooks/useToggleSet'
-import GroupAccordion from '../components/GroupAccordion'
-import PageLoader from '../components/PageLoader'
-import TradePanel from '../components/TradePanel'
-
-function MarketRow({ market, selected, onSelect }) {
-  const closed = market.closed
-  return (
-    <button
-      onClick={() => onSelect(market.id)}
-      className={`w-full text-left bg-white rounded-lg p-3 border-2 transition-all ${
-        selected ? 'border-polyblue shadow-md' : 'border-gray-200 hover:border-gray-300'
-      } ${closed ? 'opacity-80 hover:opacity-100' : ''}`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className={`font-medium text-sm flex-1 ${closed ? 'text-gray-700' : 'text-gray-900'}`}>{market.question}</p>
-        <div className="text-right flex-shrink-0">
-          {closed ? (
-            <>
-              <div className={`text-sm font-bold ${market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'}`}>
-                Ganó {market.outcome}
-              </div>
-              <div className="text-xs text-gray-500">{(yesPrice(market) * 100).toFixed(0)}% final</div>
-            </>
-          ) : (
-            <>
-              <div className="text-lg font-bold text-polygreen">{(yesPrice(market) * 100).toFixed(0)}%</div>
-              <div className="text-xs text-gray-500">YES</div>
-            </>
-          )}
-        </div>
-      </div>
-    </button>
-  )
-}
-
-function MarketList({ title, groups, particular, tone, selectedId, onSelect, open, setOpen }) {
-  if (particular.length === 0 && groups.length === 0) return null
-  return (
-    <div className="mb-6">
-      <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">{title}</h3>
-      <div className="space-y-3">
-        {particular.length > 0 && (
-          <div className="space-y-2">
-            {particular.map((m) => (
-              <MarketRow key={m.id} market={m} selected={selectedId === m.id} onSelect={onSelect} />
-            ))}
-          </div>
-        )}
-        {groups.map(([topic, list]) => {
-          const containsSelected = list.some((m) => m.id === selectedId)
-          const isOpen = open[topic] !== undefined ? open[topic] : containsSelected
-          return (
-            <GroupAccordion
-              key={topic}
-              topic={topic}
-              count={list.length}
-              tone={tone}
-              open={isOpen}
-              hintOpen="Ocultar"
-              hintClosed={tone === 'blue' ? 'Toca para ver las opciones' : 'Toca para ver resultados'}
-              onToggle={() => setOpen(topic, !isOpen)}
-            >
-              {list.map((m) => (
-                <MarketRow key={m.id} market={m} selected={selectedId === m.id} onSelect={onSelect} />
-              ))}
-            </GroupAccordion>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+import { useActivity } from '../hooks/useActivity'
+import { useMyPositions } from '../hooks/useMyPositions'
+import { buildPosition } from '../lib/portfolio'
+import { cents, sideLabel } from '../lib/format'
+import { yesPrice, noPrice } from '../lib/trading'
+import ActivityFeed from '../components/ActivityFeed'
+import ClosingBanner from '../components/ClosingBanner'
+import { CategoryTag } from '../components/MarketCard'
+import { StateBadge } from '../components/Countdown'
+import { ActionBar, BackButton, PendingBlock, PositionStrip, ProbabilityHeader, ResultBlock } from '../components/DetailParts'
+import MarketImage from '../components/MarketImage'
+import { PriceChart } from '../components/PriceCharts'
+import { Skeleton } from '../components/ui/Skeleton'
+import { useTrade } from '../components/TradeSheet'
 
 export default function MarketPage() {
-  const { activeMarkets, closedMarkets, marketsLoaded } = useGame()
-  const [selectedId, setSelectedId] = useState(null)
-  const [side, setSide] = useState('YES')
-  const [history, setHistory] = useState([])
-  const [openActive, , setOpenActive] = useToggleSet()
-  const [openClosed, , setOpenClosed] = useToggleSet()
+  const { id } = useParams()
+  const { marketsById, itemsByKey, marketsLoaded } = useGame()
+  const { openTrade } = useTrade()
+  const navigate = useNavigate()
+  const market = marketsById.get(id)
+  const { raw } = useMyPositions({ enabled: !!market })
+  const { events } = useActivity({ limit: 10, marketId: id, enabled: !!market })
 
-  const selected = useMemo(
-    () =>
-      activeMarkets.find((m) => m.id === selectedId) ||
-      closedMarkets.find((m) => m.id === selectedId) ||
-      activeMarkets[0] ||
-      closedMarkets[0] ||
-      null,
-    [activeMarkets, closedMarkets, selectedId]
+  const positions = useMemo(
+    () => (raw && market ? raw.filter((p) => p.market_id === id).map((p) => buildPosition(p, market)) : []),
+    [raw, market, id]
   )
-  const marketId = selected?.id ?? null
-  const isClosed = !!selected?.closed
+  const groupItem = market?.group_id ? itemsByKey.get(`g:${market.group_id}`) : null
+  const siblings = groupItem ? groupItem.markets.filter((m) => m.id !== id) : []
 
-  const fetchHistory = useCallback(async () => {
-    if (!marketId) return
-    const data = await rpc('get_market_history', { p_market_id: marketId, p_limit: 150 })
-    setHistory(data || [])
-  }, [marketId])
-
-  useEffect(() => {
-    setHistory([])
-    fetchHistory().catch(() => {})
-  }, [fetchHistory])
-  usePolling(fetchHistory, { interval: 20000, enabled: !!marketId && !isClosed })
-
-  const chartData = useMemo(
-    () => history.map((h) => ({ at: h.created_at, yes: Number(h.yes_price) * 100, no: Number(h.no_price) * 100 })),
-    [history]
-  )
-  const active = useMemo(() => groupMarkets(activeMarkets), [activeMarkets])
-  const closed = useMemo(() => groupMarkets(closedMarkets), [closedMarkets])
-
-  if (!marketsLoaded) return <PageLoader label="Cargando mercados..." />
-
-  if (!selected) {
+  if (!market) {
+    if (!marketsLoaded) {
+      return (
+        <div className="max-w-2xl mx-auto px-4 pt-4 space-y-4">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="w-full aspect-[16/9] rounded-3xl" />
+          <Skeleton className="h-7 w-4/5" />
+          <Skeleton className="h-12 w-1/3" />
+          <Skeleton className="h-[200px] rounded-2xl" />
+        </div>
+      )
+    }
     return (
-      <div className="flex items-center justify-center min-h-screen-safe px-4">
-        <div className="text-center">
-          <TrendingUp size={64} className="mx-auto text-gray-400 mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No hay mercados disponibles</h3>
-          <p className="text-gray-600">Espera a que un administrador cree mercados</p>
+      <div className="max-w-2xl mx-auto px-4 pt-4">
+        <BackButton />
+        <div className="text-center py-16 bg-white rounded-3xl border border-gray-200 mt-3">
+          <SearchX size={44} className="mx-auto text-gray-300 mb-3" />
+          <h2 className="font-bold text-gray-900">Este mercado ya no está disponible</h2>
+          <p className="text-sm text-gray-500 mt-1">Pudo haber sido anulado o no tienes acceso.</p>
+          <Link to="/" className="inline-block mt-4 text-polyblue font-bold">
+            Volver al inicio
+          </Link>
         </div>
       </div>
     )
   }
 
+  const yes = yesPrice(market)
+  const no = noPrice(market)
+  const open = market.state === 'open'
+  const item = { kind: 'single', state: market.state, market, closes_at: market.state === 'open' ? market.closes_at : null }
+  const owned = positions.length > 0
+
   return (
-    <div className="min-h-screen-safe bg-polygray-bg pb-6">
-      <div className="bg-white border-b border-gray-200 p-6">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-lg font-bold text-gray-900 mb-1">{selected.question}</h2>
-          {selected.description && <p className="text-sm text-gray-600 mb-3">{selected.description}</p>}
-          {isClosed && (
-            <div
-              className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-bold mb-3 ${
-                selected.outcome === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'
-              }`}
-            >
-              <Lock size={14} /> MERCADO CERRADO - Ganó {selected.outcome}
-            </div>
-          )}
+    <div className="max-w-2xl mx-auto px-4 pt-3 pb-36 space-y-5">
+      <ClosingBanner state={market.state} />
+      <BackButton />
 
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis
-                  dataKey="at"
-                  tickFormatter={timeShort}
-                  tick={{ fontSize: 12, fill: '#6B7280' }}
-                  stroke="#9CA3AF"
-                  minTickGap={40}
-                />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} stroke="#9CA3AF" domain={[0, 100]} unit="%" width={44} />
-                <Tooltip
-                  labelFormatter={dateTime}
-                  formatter={(v, name) => [`${Number(v).toFixed(1)}%`, name]}
-                  contentStyle={{ border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 14 }}
-                />
-                <Line type="monotone" dataKey="yes" stroke="#009E60" strokeWidth={3} dot={false} name="YES" isAnimationActive={false} />
-                <Line type="monotone" dataKey="no" stroke="#E02D3C" strokeWidth={3} dot={false} name="NO" isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
+      <div className="rounded-3xl overflow-hidden border border-gray-200 shadow-card bg-white">
+        <MarketImage item={market} variant="banner" priority />
+      </div>
+
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap">
+          <CategoryTag category={market.category} />
+          <StateBadge item={item} />
+        </div>
+        <h1 className="text-[22px] leading-snug font-extrabold text-gray-900">
+          {market.group_topic ? (
+            <>
+              <span className="block text-sm font-semibold text-gray-400 mb-0.5">{market.group_topic}</span>
+              {market.question}
+            </>
           ) : (
-            <div className="h-60 flex items-center justify-center text-gray-500 bg-gray-50 rounded-lg">
-              Aún no hay suficientes datos de precio
-            </div>
+            market.question
           )}
-        </div>
+        </h1>
+        {market.state !== 'resolved' && <ProbabilityHeader yes={yes} yes24={market.yes_price_24h == null ? null : Number(market.yes_price_24h)} />}
       </div>
 
-      <div className="bg-white p-4 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto">
-          <MarketList
-            title="Activos"
-            tone="blue"
-            groups={active.groups}
-            particular={active.particular}
-            selectedId={selected.id}
-            onSelect={setSelectedId}
-            open={openActive}
-            setOpen={setOpenActive}
-          />
-          <MarketList
-            title="Cerrados"
-            tone="gray"
-            groups={closed.groups}
-            particular={closed.particular}
-            selectedId={selected.id}
-            onSelect={setSelectedId}
-            open={openClosed}
-            setOpen={setOpenClosed}
-          />
-        </div>
-      </div>
+      {market.state === 'resolved' && <ResultBlock market={market} />}
+      {market.state === 'pending' && <PendingBlock />}
 
-      {!isClosed ? (
-        <div className="bg-white mt-4 mx-4 rounded-xl border border-gray-200 p-6">
-          <div className="max-w-xl mx-auto">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Operar</h3>
-            <TradePanel market={selected} side={side} onSideChange={setSide} />
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
+        <PriceChart marketId={id} currentYes={yes} live={market.state !== 'resolved'} />
+      </section>
+
+      {owned && (
+        <section className="space-y-2">
+          <h2 className="font-bold text-gray-900">Tu posición</h2>
+          <PositionStrip positions={positions} onSell={(side) => openTrade(id, side, 'SELL')} />
+        </section>
+      )}
+
+      {market.description && (
+        <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
+          <h2 className="font-bold text-gray-900 mb-1.5">Sobre este mercado</h2>
+          <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{market.description}</p>
+          <p className="text-xs text-gray-400 mt-3">
+            Si gana tu opción, cada acción paga $1.00. El resultado lo confirma un administrador.
+          </p>
+        </section>
+      )}
+
+      {groupItem && siblings.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+              <Layers size={17} className="text-gray-400" /> Otras opciones
+            </h2>
+            <Link to={`/g/${groupItem.id}`} className="text-sm font-bold text-polyblue">
+              Ver todas
+            </Link>
           </div>
-        </div>
-      ) : (
-        <div className="max-w-7xl mx-auto px-4 mt-6">
-          <div className="bg-gray-50 border-2 border-gray-300 rounded-xl p-6 text-center">
-            <Lock size={48} className="mx-auto text-gray-400 mb-3" />
-            <h3 className="text-lg font-bold text-gray-700 mb-2">Mercado Cerrado</h3>
-            <p className="text-gray-600">Este mercado ya finalizó. Solo puedes ver su historial de precios.</p>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-card divide-y divide-gray-100">
+            {siblings.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => navigate(`/m/${m.id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex-1 font-medium text-gray-800 truncate">{m.question}</span>
+                <span className="font-extrabold tabular-nums">{Math.round(yesPrice(m) * 100)}%</span>
+                <ChevronRight size={16} className="text-gray-300" />
+              </button>
+            ))}
           </div>
-        </div>
+        </section>
+      )}
+
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
+        <h2 className="font-bold text-gray-900 mb-1">Movimientos recientes</h2>
+        <ActivityFeed events={events} showMarket={false} emptyText="Nadie ha operado aquí todavía. ¡Sé el primero!" />
+      </section>
+
+      {open && (
+        <ActionBar>
+          <div className="flex gap-3">
+            <button
+              onClick={() => openTrade(id, 'YES')}
+              className="flex-1 h-14 rounded-2xl bg-polygreen text-white font-extrabold text-base shadow-lg shadow-green-500/30 tap-feedback"
+            >
+              Comprar {sideLabel('YES')} · {cents(yes, 0)}
+            </button>
+            <button
+              onClick={() => openTrade(id, 'NO')}
+              className="flex-1 h-14 rounded-2xl bg-polyred text-white font-extrabold text-base shadow-lg shadow-red-500/30 tap-feedback"
+            >
+              Comprar {sideLabel('NO')} · {cents(no, 0)}
+            </button>
+          </div>
+        </ActionBar>
       )}
     </div>
   )

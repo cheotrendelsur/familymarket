@@ -34,6 +34,7 @@ export function buildPosition(raw, market) {
     pnl,
     pnlPercent: costBasis > 0 ? (pnl / costBasis) * 100 : 0,
     closed,
+    pending: m.state === 'pending',
     isWinner,
     outcome: m.outcome,
   }

@@ -26,7 +26,7 @@ const pct = (a, p) => [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.f
 
 async function run(K, T, I) {
   const markets = []
-  for (let k = 0; k < K; k += 1) markets.push((await admin.rpc('admin_create_market', { p_question: `[TEST] bench ${k}` })).data)
+  for (let k = 0; k < K; k += 1) markets.push((await admin.rpc('staff_create_market', { p_question: `[TEST] bench ${k}` })).data)
   let inflight = 0
   const waiters = []
   const acquire = async () => {

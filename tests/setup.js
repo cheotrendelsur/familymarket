@@ -2,6 +2,15 @@
 import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+// jsdom no tiene <canvas>: el confeti se sustituye por un doble que no hace nada.
+vi.mock('canvas-confetti', () => {
+  const fn = () => Promise.resolve()
+  fn.shapeFromText = () => ({})
+  fn.reset = () => {}
+  fn.create = () => fn
+  return { default: fn }
+})
+
 globalThis.ResizeObserver =
   globalThis.ResizeObserver ||
   class {

@@ -1,8 +1,8 @@
 # FamilyMarket 🎯
 
-Mercado de predicciones familiar (dinero imaginario). Cada jugador empieza con **$1,000** y compra/vende
-acciones **YES / NO** de eventos futuros ("¿Lloverá mañana?", "¿Quién come más?"). El admin resuelve cada
-mercado y los ganadores cobran **$1 por acción**. Gana quien termine con más patrimonio.
+Mercado de predicciones familiar (dinero imaginario), con el aire de Polymarket. Cada jugador empieza con **$1,000**
+y compra/vende acciones **Sí / No** de eventos futuros ("¿Lloverá mañana?", "¿Quién come más?"). El dueño o un
+moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana quien termine con más patrimonio.
 
 - **App en producción:** https://familymarket-rho.vercel.app (Vercel, se despliega solo al hacer push a `main`)
 - **Base de datos:** Supabase, proyecto `tbxwqxuandxibpwoshuc` (cuenta `chechechristiansen@gmail.com`)
@@ -18,9 +18,23 @@ mercado y los ganadores cobran **$1 por acción**. Gana quien termine con más p
 | Límite de movimientos | 60 por día (el día cambia a medianoche **hora de Venezuela**) |
 | Precio mínimo / máximo | 1¢ – 99¢ |
 | Pago al resolver | $1.00 por acción ganadora |
-| Mercados múltiples | Varias opciones bajo un mismo tópico (se crean juntas, de forma atómica) |
-| Filtro fantasma | El admin puede **ocultar** un mercado a ciertos jugadores (se aplica en el servidor) |
+| Tolerancia de precio | 5 % por defecto (ajustable); si otro jugador mueve el precio, un toque reintenta al precio nuevo |
+| Mercados múltiples | Varias opciones bajo un mismo tema (se crean juntas, de forma atómica; comparten foto y cierre) |
+| Cierre por fecha | Un mercado puede tener hora de cierre: cuenta regresiva, apuestas bloqueadas en el servidor y estado «esperando resultado» |
+| Filtro fantasma | Se puede **ocultar** un mercado a ciertos jugadores (sorpresas); se aplica en el servidor también al feed y a los perfiles |
+| Fotos | Cámara o galería; se recortan y comprimen en el celular (WebP, JPEG en Safari) antes de subirse al bucket público `market-images` |
+| Sugerencias | Cualquier jugador propone mercados (máx. 3 pendientes); el dueño y los moderadores aprueban o rechazan |
 | Recuerdos | Pestaña con las partidas anteriores: ranking final, mercados, portafolio y operaciones de cada jugador |
+
+### Roles
+
+| Rol | Puede |
+|---|---|
+| **Dueño** (`is_admin`) | Todo: crear/editar/resolver/anular mercados, **deshacer una resolución**, nombrar moderadores, cambiar nombres, restablecer contraseñas, ajustar saldos, empezar una partida nueva |
+| **Moderador** (`is_moderator`) | Crear, editar y resolver mercados, subir fotos, revisar sugerencias y ver el registro de actividad |
+| **Jugador** | Operar, sugerir mercados, ver ranking, perfiles y feed en vivo |
+
+El dueño nombra moderadores desde **Admin → Jugadores** (interruptor «Hacer moderador»).
 
 Los valores numéricos (fee, límite diario, liquidez, saldo inicial, zona horaria) viven en la tabla
 `public.game_settings` (una fila). Para cambiarlos, en el SQL Editor de Supabase:
@@ -31,13 +45,13 @@ update public.game_settings set daily_limit = 80, fee_rate = 0.015;
 
 ## Empezar una partida nueva
 
-1. Entra como admin → pestaña **Admin** → sección **Nueva partida**.
+1. Entra como dueño → pestaña **Admin** → **Nueva partida**.
 2. (Opcional) escribe un título para el recuerdo, por ejemplo "FamilyMarket · Viaje a Margarita".
 3. Escribe `REINICIAR` y pulsa **Archivar y reiniciar partida**.
 
 Esto guarda una copia completa de la partida actual en **Recuerdos** (jugadores, mercados, acciones, operaciones
 e historial de precios) y luego deja a todos en $1,000 sin mercados. **Las cuentas y nombres de usuario se
-conservan.** La partida de febrero 2026 ya está archivada como *"FamilyMarket · Febrero 2026"*.
+conservan** (y los moderadores). La partida de febrero 2026 ya está archivada como *"FamilyMarket · Febrero 2026"*.
 
 ## Arquitectura
 
@@ -52,7 +66,19 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
   usuario es constante y no hay límite de conexiones simultáneas del plan gratuito.
 - **Una sola implementación de la matemática** (`src/lib/trading.js`) que replica exactamente las funciones SQL;
   una prueba verifica que la vista previa del frontend y el resultado del servidor coinciden al 1e-6.
-- **Estado compartido** (`GameContext`): una sola petición periódica por usuario, sin importar cuántas pantallas visite.
+- **Sondeo en dos niveles** (`GameContext`): `get_market_prices` (ligero, solo piscinas/estado) cada ~12 s; textos, fotos y
+  categoría se descargan una sola vez y solo se vuelven a bajar si el servidor avisa (`static_rev`). `get_session_state`
+  (cada ~15 s) trae movimientos del día, hora del servidor y avisos pendientes (victoria, derrota, sugerencias...).
+- **Hora del servidor:** la cuenta regresiva usa la hora de la base de datos, no la del celular.
+- **Celebraciones:** los avisos viven en la tabla `notifications`; la app los muestra uno a uno (confeti, vibración y
+  sonido opcional) y los marca como vistos al cerrarlos.
+- **Fotos:** `src/lib/images.js` recorta (banner 16:9 + miniatura cuadrada), codifica WebP y calcula el color promedio
+  para el «placeholder». Solo el staff puede escribir en el bucket; el servidor solo acepta URLs de ese bucket.
+- **Modo demo (solo desarrollo):** `npm run dev` y abre `http://localhost:5173/?mock=1&role=owner|mod|player` para ver la
+  interfaz con datos de ejemplo, sin tocar la base real (`src/mock`, no entra al build de producción). En la consola:
+  `__mock.win()`, `__mock.lose()`, `__mock.resolve('rain')`…
+- **PWA:** al desplegar, la app instalada muestra «Hay una versión nueva» y se actualiza solo cuando el jugador toca el
+  botón (nunca recarga a mitad de una compra).
 - **Seguridad por capas:** ningún rol de la API puede escribir tablas; todo pasa por RPC que validan identidad,
   rol admin, mercado abierto, saldo, límites y slippage.
 
@@ -60,7 +86,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…005). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…010). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+concurrencia), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -76,6 +102,11 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 003 | Ranking, portafolio, historial de precios, movimientos diarios, "archivar y reiniciar" |
 | 004 | Precisión numérica (piscinas a 10 decimales, dinero a 4) |
 | 005 | Superficie mínima, `ping()` de keep-alive, RPC de auditoría admin |
+| 006 | Roles (moderadores), categorías, cierre por fecha, fotos (columnas), creación/edición de mercados para staff, herramientas del dueño |
+| 007 | Avisos (`notifications`), sugerencias, carrera de patrimonio (snapshots), `get_session_state`, `get_market_prices`, feed en vivo, deshacer resolución, motor con cierre por fecha |
+| 008 | `get_networth_race`, `get_player_profile` (estadísticas), arreglo del archivado (columnas explícitas) |
+| 009 | Bucket de fotos `market-images` (lectura pública, escritura solo staff) |
+| 010 | Editar la descripción de un mercado múltiple la cambia en todas sus opciones |
 
 ## Desarrollo
 
@@ -88,12 +119,13 @@ npm run build                  # build de producción (PWA)
 
 ### Pruebas
 
-Requieren usuarios de prueba temporales (`lt_00@loadtest.invalid` admin, `lt_01…lt_13`) y un archivo de credenciales
-**fuera del repo** (`{"password":"…","prefix":"lt_","domain":"loadtest.invalid","count":14}`):
+Requieren usuarios de prueba temporales (`lt_00@loadtest.invalid` dueño, `lt_01…lt_13`, con `username = lt_user_NN`) y un
+archivo de credenciales **fuera del repo** (`{"password":"…","prefix":"lt_","domain":"loadtest.invalid","count":14}`):
 
 ```bash
-LOADTEST_ENV=/ruta/testenv.json npm run test:load     # 100 verificaciones: seguridad, lógica, concurrencia
-LOADTEST_ENV=/ruta/testenv.json npm run test:ui       # 3 recorridos E2E de la interfaz real
+LOADTEST_ENV=/ruta/testenv.json npm run test:load     # ~190 verificaciones: seguridad, lógica, roles, sugerencias, avisos, fotos, concurrencia
+LOADTEST_ENV=/ruta/testenv.json npm run test:ui       # 3 recorridos E2E de la interfaz real (jugador, dueño, alta)
+node scripts/loadtest.mjs feat                         # solo las funciones nuevas (roles, cierre, avisos, sugerencias, fotos)
 ```
 
 Crear / borrar los usuarios de prueba (SQL Editor, ver `docs/AUDITORIA.md` §Pruebas):
@@ -123,6 +155,9 @@ quedara corto, Supabase Pro ($25/mes) elimina estos topes sin cambiar el código
   Para un respaldo externo: Supabase → Table Editor → *Export* (CSV), o `pg_dump` con la contraseña de la BD.
 - **Límite de registros por IP:** Auth permite 300 registros/inicios de sesión cada 5 min por IP
   (antes 30; se subió porque varios familiares pueden compartir la misma IP del hotel u operadora).
-- **Registro de actividad del admin:** pestaña Admin (crear/resolver/anular mercados, ajustes de saldo, reinicios).
-- **PWA instalada antes de esta versión:** al abrir la app se actualiza sola; si ves la versión vieja, cierra y
-  vuelve a abrir (o recarga) una vez.
+- **Registro de actividad:** pestaña Admin → Actividad (visible para dueño y moderadores).
+- **Olvidó la contraseña:** el dueño entra en Admin → Jugadores → el jugador → *Contraseña*: se genera una nueva y se
+  la pasa por WhatsApp (se cierran las sesiones abiertas de ese jugador).
+- **Auth → URL Configuration:** *Site URL* debe ser `https://familymarket-rho.vercel.app` (no `localhost`).
+- **PWA instalada antes de esta versión:** la primera vez puede pedir cerrar y volver a abrir; desde ahora avisa con un
+  banner «Hay una versión nueva».

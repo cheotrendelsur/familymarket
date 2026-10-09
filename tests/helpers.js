@@ -35,3 +35,11 @@ export async function loginInBrowser(i) {
 }
 
 export const goto = (path) => window.history.pushState({}, '', path)
+
+/** Marca como vistos los avisos pendientes del usuario i (si no, las celebraciones tapan la pantalla en las pruebas). */
+export async function clearNotifications(i) {
+  const { client } = await apiClient(i)
+  const { data } = await client.rpc('get_session_state')
+  const ids = (data?.notifications || []).map((n) => n.id)
+  if (ids.length) await client.rpc('mark_notifications_seen', { p_ids: ids })
+}

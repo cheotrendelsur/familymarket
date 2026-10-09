@@ -1,51 +1,183 @@
 import { memo } from 'react'
-import { TrendingUp } from 'lucide-react'
-import { noPrice, yesPrice } from '../lib/trading'
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle2, ChevronRight, Flame, Lock, Sparkles, XCircle } from 'lucide-react'
+import { categoryOf } from '../lib/categories'
+import { yesPrice } from '../lib/trading'
+import { sideLabel } from '../lib/format'
+import ChanceRing from './ChanceRing'
+import MarketImage from './MarketImage'
+import PriceFlash from './ui/PriceFlash'
+import YesNoButtons from './YesNoButtons'
+import { StateBadge } from './Countdown'
 
-const MarketCard = memo(function MarketCard({ market, onTrade }) {
-  const yes = yesPrice(market)
-  const no = noPrice(market)
-  const liquidity = Number(market.yes_pool) + Number(market.no_pool)
+export function CategoryTag({ category, className = '' }) {
+  const cat = categoryOf(category)
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold text-gray-500 ${className}`}>
+      <span aria-hidden="true">{cat.emoji}</span>
+      {cat.label}
+    </span>
+  )
+}
+
+export function Badges({ item, hot }) {
+  return (
+    <>
+      {hot && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
+          <Flame size={12} /> Tendencia
+        </span>
+      )}
+      {!hot && item.isNew && item.state === 'open' && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-bold text-polyblue bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+          <Sparkles size={12} /> Nuevo
+        </span>
+      )}
+    </>
+  )
+}
+
+/** Resultado de un mercado ya resuelto, dentro de la tarjeta. */
+export function ResultBanner({ market }) {
+  const yes = market.outcome === 'YES'
+  const Icon = yes ? CheckCircle2 : XCircle
+  return (
+    <div
+      className={`rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 font-bold border ${
+        yes ? 'bg-emerald-50 border-emerald-200 text-polygreen' : 'bg-rose-50 border-rose-200 text-polyred'
+      }`}
+    >
+      <Icon size={20} strokeWidth={2.5} /> Ganó «{sideLabel(market.outcome)}»
+    </div>
+  )
+}
+
+export function PendingBanner() {
+  return (
+    <div className="rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 font-semibold bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+      <Lock size={16} /> Apuestas cerradas · falta el resultado
+    </div>
+  )
+}
+
+/** Tarjeta de un mercado suelto (estilo Polymarket). */
+function MarketCard({ item, hot = false, onTrade }) {
+  const navigate = useNavigate()
+  const m = item.market
+  const yes = yesPrice(m)
+  const go = () => navigate(`/m/${m.id}`)
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      <div className="p-4">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <TrendingUp size={20} className="text-polyblue" strokeWidth={2} />
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={go}
+      onKeyDown={(e) => e.key === 'Enter' && go()}
+      className="bg-white rounded-2xl border border-gray-200 shadow-card p-3.5 cursor-pointer tap-feedback hover:shadow-lift hover:border-gray-300 transition-shadow animate-slide-up"
+    >
+      <div className="flex items-start gap-3">
+        <MarketImage item={item} size={52} />
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-[15px] leading-snug text-gray-900 line-clamp-2">{m.question}</h3>
+          <div className="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap">
+            <CategoryTag category={item.category} />
+            {item.state === 'open' && <StateBadge item={item} />}
+            <Badges item={item} hot={hot} />
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 leading-snug">{market.question}</h3>
-            {market.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{market.description}</p>}
-          </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => onTrade(market, 'YES')}
-            className="bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 rounded-xl p-4 border-2 border-emerald-200 transition-all tap-feedback no-select"
-          >
-            <div className="text-xs font-semibold text-gray-600 mb-1">YES</div>
-            <div className="text-3xl font-bold text-polygreen mb-1">{(yes * 100).toFixed(1)}¢</div>
-            <div className="text-xs text-gray-600">{(yes * 100).toFixed(0)}% prob.</div>
-          </button>
-
-          <button
-            onClick={() => onTrade(market, 'NO')}
-            className="bg-rose-50 hover:bg-rose-100 active:bg-rose-200 rounded-xl p-4 border-2 border-rose-200 transition-all tap-feedback no-select"
-          >
-            <div className="text-xs font-semibold text-gray-600 mb-1">NO</div>
-            <div className="text-3xl font-bold text-polyred mb-1">{(no * 100).toFixed(1)}¢</div>
-            <div className="text-xs text-gray-600">{(no * 100).toFixed(0)}% prob.</div>
-          </button>
-        </div>
-
-        <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 text-center">
-          Liquidez: {liquidity.toFixed(0)} tokens
-        </div>
+        {item.state !== 'resolved' && <ChanceRing value={yes} />}
       </div>
+
+      <div className="mt-3">
+        {item.state === 'open' && <YesNoButtons market={m} onPick={onTrade} />}
+        {item.state === 'pending' && <PendingBanner />}
+        {item.state === 'resolved' && <ResultBanner market={m} />}
+      </div>
+    </article>
+  )
+}
+
+export default memo(MarketCard)
+
+/** Fila de una opción dentro de un mercado múltiple (nombre, %, botones Sí/No). */
+export const OptionRow = memo(function OptionRow({ market, onTrade, onOpen, rank }) {
+  const yes = yesPrice(market)
+  const resolved = market.state === 'resolved'
+  const pending = market.state === 'pending'
+  return (
+    <div className="flex items-center gap-2 py-2">
+      <button onClick={onOpen} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+        {rank !== undefined && <span className="text-xs font-bold text-gray-300 w-3 flex-shrink-0">{rank}</span>}
+        <span className="font-medium text-[14px] text-gray-800 truncate">{market.question}</span>
+      </button>
+      {resolved ? (
+        <span
+          className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${
+            market.outcome === 'YES' ? 'bg-emerald-50 text-polygreen' : 'bg-rose-50 text-polyred'
+          }`}
+        >
+          {market.outcome === 'YES' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+          {sideLabel(market.outcome)}
+        </span>
+      ) : (
+        <>
+          <PriceFlash value={Math.round(yes * 100)} className="font-extrabold text-[15px] tabular-nums w-10 text-right">
+            {Math.round(yes * 100)}%
+          </PriceFlash>
+          {pending ? (
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-1 flex items-center gap-1">
+              <Lock size={11} /> Cerrado
+            </span>
+          ) : (
+            <YesNoButtons market={market} onPick={onTrade} compact />
+          )}
+        </>
+      )}
     </div>
   )
 })
 
-export default MarketCard
+/** Tarjeta de un mercado múltiple: título + las opciones más probables. */
+export const GroupCard = memo(function GroupCard({ item, hot = false, onTrade, maxOptions = 3 }) {
+  const navigate = useNavigate()
+  const go = () => navigate(`/g/${item.id}`)
+  const shown = item.markets.slice(0, maxOptions)
+  const extra = item.markets.length - shown.length
+  const leader = item.markets[0]
+
+  return (
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={go}
+      onKeyDown={(e) => e.key === 'Enter' && go()}
+      className="bg-white rounded-2xl border border-gray-200 shadow-card p-3.5 cursor-pointer hover:shadow-lift hover:border-gray-300 transition-shadow animate-slide-up"
+    >
+      <div className="flex items-start gap-3">
+        <MarketImage item={item} size={52} />
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-[15px] leading-snug text-gray-900 line-clamp-2">{item.title}</h3>
+          <div className="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap">
+            <CategoryTag category={item.category} />
+            <StateBadge item={item} />
+            <Badges item={item} hot={hot} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 divide-y divide-gray-100" onClick={(e) => e.stopPropagation()}>
+        {shown.map((m, i) => (
+          <OptionRow key={m.id} market={m} rank={i + 1} onTrade={onTrade} onOpen={go} />
+        ))}
+      </div>
+
+      <button
+        onClick={go}
+        className="mt-1.5 w-full flex items-center justify-center gap-1 text-sm font-semibold text-polyblue py-1.5"
+      >
+        {extra > 0 ? `Ver ${extra} opción${extra === 1 ? '' : 'es'} más` : leader?.state === 'resolved' ? 'Ver resultados' : 'Ver todo'}
+        <ChevronRight size={16} />
+      </button>
+    </article>
+  )
+})
