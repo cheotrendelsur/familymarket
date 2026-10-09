@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ui": "vitest run",
+    "test:load": "node scripts/loadtest.mjs all"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.7",
@@ -20,13 +22,17 @@
     "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.24",
+    "jsdom": "^25.0.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "vite": "^5.0.12",
-    "vite-plugin-pwa": "^0.17.5"
+    "vite-plugin-pwa": "^0.17.5",
+    "vitest": "^2.1.8"
   }
 }

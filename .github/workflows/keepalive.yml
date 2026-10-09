@@ -1,0 +1,18 @@
+name: Keep Supabase alive
+
+# El plan gratuito de Supabase PAUSA el proyecto tras ~7 dias sin actividad.
+# Este cron gratuito llama cada 2 dias a public.ping() (una funcion que solo devuelve la hora)
+# para que FamilyMarket siempre este despierto. La anon key es PUBLICA por diseno
+# (ya viaja dentro del JavaScript de la app); no da acceso a ningun dato.
+on:
+  schedule:
+    - cron: '17 12 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping a Supabase
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 -X POST "https://tbxwqxuandxibpwoshuc.supabase.co/rest/v1/rpc/ping"             -H "apikey: sb_publishable_4Z2Tn-arF1PzfHJ7DK28MA_O0DJ-kJm"             -H "Authorization: Bearer sb_publishable_4Z2Tn-arF1PzfHJ7DK28MA_O0DJ-kJm"             -H "Content-Type: application/json"             -d '{}'

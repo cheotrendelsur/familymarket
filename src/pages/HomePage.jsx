@@ -1,240 +1,117 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
-import { supabase } from '../supabaseClient'
-import { useAuth } from '../context/AuthContext' // <-- NUEVA IMPORTACIÓN
-import { TrendingUp, RefreshCw, Trophy, Medal, Award, CheckCircle, XCircle, ChevronDown } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CheckCircle, RefreshCw, TrendingUp, Trophy, XCircle } from 'lucide-react'
+import { rpc } from '../lib/api'
+import { groupMarkets } from '../lib/markets'
+import { noPrice, yesPrice } from '../lib/trading'
+import { useAuth } from '../context/AuthContext'
+import { useGame } from '../context/GameContext'
+import { usePolling } from '../hooks/usePolling'
+import { useToggleSet } from '../hooks/useToggleSet'
 import MarketCard from '../components/MarketCard'
 import TradeModal from '../components/TradeModal'
+import GroupAccordion from '../components/GroupAccordion'
+import Leaderboard from '../components/Leaderboard'
+import PageLoader from '../components/PageLoader'
 
-export default function HomePage({ setIsModalOpen }) {
-  const { profile } = useAuth() // <-- YA SABE QUIÉN ERES
-  const [activeMarkets, setActiveMarkets] = useState([])
-  const [closedMarkets, setClosedMarkets] = useState([])
-  const [leaderboard, setLeaderboard] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [selectedMarket, setSelectedMarket] = useState(null)
-  const [tradeSide, setTradeSide] = useState(null)
-  const [expandedTopics, setExpandedTopics] = useState({})
-  const [expandedClosedTopics, setExpandedClosedTopics] = useState({})
-
-  // Efecto 1: Cargar datos solo cuando sepamos quién es el usuario
-  useEffect(() => {
-    if (profile) {
-      fetchAllData()
-    }
-  }, [profile])
-
-  // Efecto 2: Escuchar cambios en la base de datos en tiempo real
-  useEffect(() => {
-    const channel = supabase
-      .channel('homepage-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transaction_logs' },
-        () => { fetchLeaderboard() }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'markets' },
-        () => { fetchMarkets() }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  // Notificar al padre cuando el modal se abre/cierra
-  useEffect(() => {
-    if (setIsModalOpen) {
-      setIsModalOpen(selectedMarket !== null && tradeSide !== null)
-    }
-  }, [selectedMarket, tradeSide, setIsModalOpen])
-
-  const fetchAllData = async () => {
-    await Promise.all([fetchMarkets(), fetchLeaderboard()])
-    setLoading(false)
-  }
-
-  const fetchMarkets = async () => {
-    try {
-      const { data: active, error: activeError } = await supabase
-        .from('markets')
-        .select('*')
-        .eq('closed', false)
-        .order('created_at', { ascending: false })
-
-      if (activeError) throw activeError
-
-      const { data: closed, error: closedError } = await supabase
-        .from('markets')
-        .select('*')
-        .eq('closed', true)
-        .order('resolved_at', { ascending: false })
-
-      if (closedError) throw closedError
-
-      // 👇 EL FILTRO FANTASMA (LISTA NEGRA) 👇
-      const filterVisible = (marketsList) => marketsList.filter(m => 
-        profile?.is_admin || // El admin siempre ve todo
-        !m.target_users || // Si no hay restricción, lo ven todos
-        m.target_users.length === 0 || 
-        !m.target_users.includes(profile?.id) // <-- CAMBIO CLAVE: Si NO está bloqueado, lo ve.
-      )
-
-      setActiveMarkets(filterVisible(active || []))
-      setClosedMarkets(filterVisible(closed || []))
-    } catch (error) {
-      console.error('Error al obtener mercados:', error)
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
-  const fetchLeaderboard = async () => {
-    try {
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, balance, email')
-        .not('username', 'is', null)
-
-      if (profilesError) throw profilesError
-
-      const { data: shares, error: sharesError } = await supabase
-        .from('shares')
-        .select(`
-          user_id,
-          market_id,
-          side,
-          count,
-          markets (yes_pool, no_pool, closed, outcome)
-        `)
-        .gt('count', 0)
-
-      if (sharesError) throw sharesError
-
-      const userNetWorth = profiles.map(profile => {
-        const cash = parseFloat(profile.balance)
-        
-        const userShares = shares?.filter(s => s.user_id === profile.id) || []
-        const sharesValue = userShares.reduce((total, share) => {
-          const market = share.markets
-          if (!market) return total
-
-          let shareValue = 0
-          
-          if (market.closed) {
-            // CORRECCIÓN 1: Si cerró, las acciones valen $0 en el portafolio 
-            // porque la ganancia ya se depositó en el "Efectivo".
-            shareValue = 0
-          } else {
-            // CORRECCIÓN 2: Lógica CPMM correcta (piscina contraria) para mercados activos.
-            const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-            const pool = share.side === 'YES' ? parseFloat(market.no_pool) : parseFloat(market.yes_pool)
-            const currentPrice = pool / totalPool
-            shareValue = parseFloat(share.count) * currentPrice
-          }
-
-          return total + shareValue
-        }, 0)
-
-        return {
-          userId: profile.id,
-          username: profile.username || profile.email.split('@')[0],
-          cash,
-          sharesValue,
-          totalNetWorth: cash + sharesValue
-        }
-      })
-
-      userNetWorth.sort((a, b) => b.totalNetWorth - a.totalNetWorth)
-
-      setLeaderboard(userNetWorth)
-    } catch (error) {
-      console.error('Error al obtener leaderboard:', error)
-    }
-  }
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await fetchAllData()
-  }, [])
-
-  const handleTradeClick = useCallback((market, side) => {
-    setSelectedMarket(market)
-    setTradeSide(side)
-  }, [])
-
-  const handleCloseModal = useCallback(() => {
-    setSelectedMarket(null)
-    setTradeSide(null)
-    fetchMarkets()
-  }, [])
-
-  const toggleTopic = (topic) => {
-    setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
-  }
-  const toggleClosedTopic = (topic) => {
-    setExpandedClosedTopics(prev => ({ ...prev, [topic]: !prev[topic] }))
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen-safe">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-polyblue mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Cargando mercados...</p>
+function ClosedCard({ market }) {
+  const won = market.outcome === 'YES'
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
+      <div className="p-4">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
+          </div>
+          <h3 className="font-semibold text-gray-700 leading-snug flex-1">{market.question}</h3>
+        </div>
+        <div className={`rounded-xl p-3 border-2 mb-3 ${won ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+          <div className="flex items-center justify-center gap-2">
+            {won ? (
+              <CheckCircle size={22} className="text-polygreen" strokeWidth={2.5} />
+            ) : (
+              <XCircle size={22} className="text-polyred" strokeWidth={2.5} />
+            )}
+            <span className={`text-xl font-bold ${won ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-center">
+          <div>
+            <div className="text-gray-500">Precio final YES</div>
+            <div className="font-bold text-polygreen">{(yesPrice(market) * 100).toFixed(1)}¢</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Precio final NO</div>
+            <div className="font-bold text-polyred">{(noPrice(market) * 100).toFixed(1)}¢</div>
+          </div>
         </div>
       </div>
-    )
+    </div>
+  )
+}
+
+const Grid = ({ children }) => <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+
+export default function HomePage({ setIsModalOpen }) {
+  const { profile } = useAuth()
+  const { activeMarkets, closedMarkets, marketsLoaded, refreshMarkets } = useGame()
+  const [leaderboard, setLeaderboard] = useState([])
+  const [leaderboardLoaded, setLeaderboardLoaded] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [selection, setSelection] = useState(null) // { marketId, side }
+  const [openActive, toggleActive] = useToggleSet()
+  const [openClosed, toggleClosed] = useToggleSet()
+
+  const fetchLeaderboard = useCallback(async () => {
+    const data = await rpc('get_leaderboard')
+    setLeaderboard(data || [])
+    setLeaderboardLoaded(true)
+  }, [])
+  const { refresh: refreshLeaderboard } = usePolling(fetchLeaderboard, { interval: 30000 })
+
+  // El modal lee el mercado EN VIVO desde el contexto (precios siempre actualizados).
+  const selectedMarket = useMemo(
+    () => (selection ? activeMarkets.find((m) => m.id === selection.marketId) || null : null),
+    [selection, activeMarkets]
+  )
+
+  useEffect(() => {
+    setIsModalOpen?.(!!selectedMarket)
+    return () => setIsModalOpen?.(false)
+  }, [selectedMarket, setIsModalOpen])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await Promise.allSettled([refreshMarkets(), refreshLeaderboard()])
+    setRefreshing(false)
   }
 
-  const particularMarkets = activeMarkets.filter(m => !m.group_topic)
-  
-  const multipleMarketsGroups = activeMarkets
-    .filter(m => m.group_topic)
-    .reduce((acc, market) => {
-      if (!acc[market.group_topic]) {
-        acc[market.group_topic] = []
-      }
-      acc[market.group_topic].push(market)
-      return acc
-    }, {})
+  const handleTrade = useCallback((market, side) => setSelection({ marketId: market.id, side }), [])
+  const handleClose = useCallback(() => {
+    setSelection(null)
+    refreshLeaderboard()
+  }, [refreshLeaderboard])
 
-  const particularClosedMarkets = closedMarkets.filter(m => !m.group_topic)
-  
-  const multipleClosedMarketsGroups = closedMarkets
-    .filter(m => m.group_topic)
-    .reduce((acc, market) => {
-      if (!acc[market.group_topic]) acc[market.group_topic] = []
-      acc[market.group_topic].push(market)
-      return acc
-    }, {})
+  const active = useMemo(() => groupMarkets(activeMarkets), [activeMarkets])
+  const closed = useMemo(() => groupMarkets(closedMarkets), [closedMarkets])
+
+  if (!marketsLoaded) return <PageLoader label="Cargando mercados..." />
 
   return (
     <div className="min-h-screen-safe bg-polygray-bg pb-6">
-      {/* SECCIÓN 1: MERCADOS ACTIVOS */}
       <div className="bg-white border-b border-gray-200 mb-6">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Mercados Activos</h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Compra y vende acciones de eventos futuros
-              </p>
+              <p className="text-sm text-gray-600 mt-1">Compra y vende acciones de eventos futuros</p>
             </div>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors active:bg-gray-200 disabled:opacity-50 tap-feedback no-select"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               aria-label="Refrescar mercados"
             >
-              <RefreshCw 
-                size={20} 
-                className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`}
-                strokeWidth={2}
-              />
+              <RefreshCw size={20} className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`} strokeWidth={2} />
             </button>
           </div>
 
@@ -242,368 +119,105 @@ export default function HomePage({ setIsModalOpen }) {
             <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
               <TrendingUp size={48} className="mx-auto text-gray-400 mb-3" strokeWidth={1.5} />
               <p className="text-gray-600">No hay mercados activos en este momento</p>
+              <p className="text-xs text-gray-400 mt-1">Cuando el administrador cree uno, aparecerá aquí al instante.</p>
             </div>
           ) : (
             <div className="space-y-8">
-              
-              {/* BLOQUE A: MERCADOS PARTICULARES */}
-              {particularMarkets.length > 0 && (
+              {active.particular.length > 0 && (
                 <div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
-                    Mercados Particulares
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {particularMarkets.map((market) => (
-                      <MarketCard
-                        key={market.id}
-                        market={market}
-                        onClickYes={(m) => handleTradeClick(m, 'YES')}
-                        onClickNo={(m) => handleTradeClick(m, 'NO')}
-                      />
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">Mercados Particulares</h3>
+                  <Grid>
+                    {active.particular.map((m) => (
+                      <MarketCard key={m.id} market={m} onTrade={handleTrade} />
                     ))}
-                  </div>
+                  </Grid>
                 </div>
               )}
-
-              {/* BLOQUE B: MERCADOS MÚLTIPLES */}
-              {/* === BLOQUE B: MERCADOS MÚLTIPLES (ACORDEÓN) === */}
-              {Object.keys(multipleMarketsGroups).length > 0 && (
+              {active.groups.length > 0 && (
                 <div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
-                    Mercados Múltiples
-                  </h3>
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">Mercados Múltiples</h3>
                   <div className="space-y-4">
-                    {Object.entries(multipleMarketsGroups).map(([topic, markets]) => (
-                      <div key={topic} className="bg-white border-2 border-polyblue/20 rounded-xl overflow-hidden shadow-sm transition-all">
-                        
-                        {/* BOTÓN DESPLEGABLE (TÓPICO) */}
-                        <button
-                          onClick={() => toggleTopic(topic)}
-                          className="w-full flex items-center justify-between p-5 bg-blue-50/50 hover:bg-blue-50 transition-colors tap-feedback"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-polyblue text-white rounded-xl flex items-center justify-center font-bold shadow-md text-lg">
-                              {markets.length}
-                            </div>
-                            <div className="text-left">
-                              <h4 className="text-lg font-bold text-gray-900">{topic}</h4>
-                              <p className="text-sm text-gray-500">
-                                {expandedTopics[topic] ? 'Ocultar opciones' : 'Toca para ver y apostar'}
-                              </p>
-                            </div>
-                          </div>
-                          <ChevronDown 
-                            size={24} 
-                            className={`text-polyblue transform transition-transform duration-300 ${expandedTopics[topic] ? 'rotate-180' : ''}`} 
-                          />
-                        </button>
-                        
-                        {/* LAS TARJETAS OCULTAS */}
-                        {expandedTopics[topic] && (
-                          <div className="p-5 border-t-2 border-polyblue/10 bg-gray-50/50">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {markets.map((market) => (
-                                <MarketCard
-                                  key={market.id}
-                                  market={market}
-                                  onClickYes={(m) => handleTradeClick(m, 'YES')}
-                                  onClickNo={(m) => handleTradeClick(m, 'NO')}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                      </div>
+                    {active.groups.map(([topic, list]) => (
+                      <GroupAccordion
+                        key={topic}
+                        topic={topic}
+                        count={list.length}
+                        open={!!openActive[topic]}
+                        onToggle={() => toggleActive(topic)}
+                      >
+                        <Grid>
+                          {list.map((m) => (
+                            <MarketCard key={m.id} market={m} onTrade={handleTrade} />
+                          ))}
+                        </Grid>
+                      </GroupAccordion>
                     ))}
                   </div>
                 </div>
               )}
-
             </div>
           )}
         </div>
       </div>
 
-      {/* SECCIÓN 2: MERCADOS FINALIZADOS */}
-      {/* SECCIÓN 2: MERCADOS FINALIZADOS */}
       <div className="max-w-7xl mx-auto px-4 mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Mercados Finalizados</h2>
-        
         {closedMarkets.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
             <p className="text-gray-500">Aún no hay mercados finalizados</p>
           </div>
         ) : (
           <div className="space-y-8">
-            
-            {/* === BLOQUE A: CERRADOS PARTICULARES === */}
-            {particularClosedMarkets.length > 0 && (
-              <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
-                  Mercados Particulares
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {particularClosedMarkets.map((market) => {
-                    const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-                    const yesPrice = (parseFloat(market.yes_pool) / totalPool * 100).toFixed(1)
-                    const noPrice = (parseFloat(market.no_pool) / totalPool * 100).toFixed(1)
-
-                    return (
-                      <div key={market.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-80 hover:opacity-100 transition-opacity">
-                        <div className="p-4">
-                          <div className="flex items-start gap-3 mb-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
-                            </div>
-                            <h3 className="font-semibold text-gray-700 leading-snug flex-1">
-                              {market.question}
-                            </h3>
-                          </div>
-                          <div className={`rounded-xl p-4 border-2 mb-3 ${market.outcome === 'YES' ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-                            <div className="flex items-center justify-center gap-2">
-                              {market.outcome === 'YES' ? <CheckCircle size={24} className="text-polygreen" strokeWidth={2.5} /> : <XCircle size={24} className="text-polyred" strokeWidth={2.5} />}
-                              <span className={`text-2xl font-bold ${market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="text-center">
-                              <div className="text-gray-500">Precio Final YES</div>
-                              <div className="font-bold text-polygreen">{yesPrice}¢</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-gray-500">Precio Final NO</div>
-                              <div className="font-bold text-polyred">{noPrice}¢</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+            {closed.particular.length > 0 && (
+              <Grid>
+                {closed.particular.map((m) => (
+                  <ClosedCard key={m.id} market={m} />
+                ))}
+              </Grid>
+            )}
+            {closed.groups.length > 0 && (
+              <div className="space-y-4">
+                {closed.groups.map(([topic, list]) => (
+                  <GroupAccordion
+                    key={topic}
+                    topic={topic}
+                    count={list.length}
+                    tone="gray"
+                    hintOpen="Ocultar resultados"
+                    hintClosed="Toca para ver resultados"
+                    open={!!openClosed[topic]}
+                    onToggle={() => toggleClosed(topic)}
+                  >
+                    <Grid>
+                      {list.map((m) => (
+                        <ClosedCard key={m.id} market={m} />
+                      ))}
+                    </Grid>
+                  </GroupAccordion>
+                ))}
               </div>
             )}
-
-            {/* === BLOQUE B: CERRADOS MÚLTIPLES (ACORDEÓN) === */}
-            {Object.keys(multipleClosedMarketsGroups).length > 0 && (
-              <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-200 pb-2">
-                  Mercados Múltiples
-                </h3>
-                <div className="space-y-4">
-                  {Object.entries(multipleClosedMarketsGroups).map(([topic, markets]) => (
-                    <div key={topic} className="bg-white border-2 border-gray-300 rounded-xl overflow-hidden shadow-sm transition-all opacity-90 hover:opacity-100">
-                      
-                      {/* BOTÓN DESPLEGABLE (GRIS PARA MERCADOS CERRADOS) */}
-                      <button
-                        onClick={() => toggleClosedTopic(topic)}
-                        className="w-full flex items-center justify-between p-5 bg-gray-100 hover:bg-gray-200 transition-colors tap-feedback"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-gray-500 text-white rounded-xl flex items-center justify-center font-bold shadow-md text-lg">
-                            {markets.length}
-                          </div>
-                          <div className="text-left">
-                            <h4 className="text-lg font-bold text-gray-900">{topic}</h4>
-                            <p className="text-sm text-gray-600">
-                              {expandedClosedTopics[topic] ? 'Ocultar resultados' : 'Toca para ver resultados'}
-                            </p>
-                          </div>
-                        </div>
-                        <ChevronDown 
-                          size={24} 
-                          className={`text-gray-600 transform transition-transform duration-300 ${expandedClosedTopics[topic] ? 'rotate-180' : ''}`} 
-                        />
-                      </button>
-                      
-                      {/* LAS TARJETAS OCULTAS */}
-                      {expandedClosedTopics[topic] && (
-                        <div className="p-5 border-t-2 border-gray-300 bg-gray-50/50">
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {markets.map((market) => {
-                              const totalPool = parseFloat(market.yes_pool) + parseFloat(market.no_pool)
-                              const yesPrice = (parseFloat(market.yes_pool) / totalPool * 100).toFixed(1)
-                              const noPrice = (parseFloat(market.no_pool) / totalPool * 100).toFixed(1)
-
-                              return (
-                                <div key={market.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
-                                  <div className="p-4">
-                                    <div className="flex items-start gap-3 mb-3">
-                                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                        <TrendingUp size={20} className="text-gray-400" strokeWidth={2} />
-                                      </div>
-                                      <h3 className="font-semibold text-gray-700 leading-snug flex-1">
-                                        {market.question}
-                                      </h3>
-                                    </div>
-                                    <div className={`rounded-xl p-4 border-2 mb-3 ${market.outcome === 'YES' ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-                                      <div className="flex items-center justify-center gap-2">
-                                        {market.outcome === 'YES' ? <CheckCircle size={24} className="text-polygreen" strokeWidth={2.5} /> : <XCircle size={24} className="text-polyred" strokeWidth={2.5} />}
-                                        <span className={`text-2xl font-bold ${market.outcome === 'YES' ? 'text-polygreen' : 'text-polyred'}`}>GANÓ {market.outcome}</span>
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
-                                      <div className="text-center">
-                                        <div className="text-gray-500">Precio Final YES</div>
-                                        <div className="font-bold text-polygreen">{yesPrice}¢</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="text-gray-500">Precio Final NO</div>
-                                        <div className="font-bold text-polyred">{noPrice}¢</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
           </div>
         )}
       </div>
 
-      {/* SECCIÓN 3: RANKING FAMILIAR */}
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-3 mb-4">
           <Trophy size={28} className="text-yellow-500" strokeWidth={2} />
           <h2 className="text-2xl font-bold text-gray-900">Ranking Familiar</h2>
         </div>
-
-        {leaderboard.length === 0 ? (
+        {!leaderboardLoaded ? (
+          <div className="text-center py-8 bg-white rounded-xl border border-gray-200 text-gray-500">Cargando ranking...</div>
+        ) : leaderboard.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
             <p className="text-gray-500">El ranking aparecerá cuando los usuarios configuren su nombre</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Posición
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Jugador
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Efectivo
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      En Acciones
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Patrimonio Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {leaderboard.map((user, index) => {
-                    const position = index + 1
-                    
-                    let PositionIcon = null
-                    let iconColor = ''
-                    let numberColor = ''
-                    let numberSize = ''
-                    let rowBackground = ''
-
-                    if (position === 1) {
-                      PositionIcon = Trophy
-                      iconColor = 'text-yellow-500'
-                      numberColor = 'text-yellow-600'
-                      numberSize = 'text-2xl'
-                      rowBackground = 'bg-yellow-50'
-                    } else if (position === 2) {
-                      PositionIcon = Medal
-                      iconColor = 'text-gray-400'
-                      numberColor = 'text-gray-600'
-                      numberSize = 'text-xl'
-                      rowBackground = 'bg-gray-50'
-                    } else if (position === 3) {
-                      PositionIcon = Award
-                      iconColor = 'text-amber-600'
-                      numberColor = 'text-amber-700'
-                      numberSize = 'text-xl'
-                      rowBackground = 'bg-orange-50'
-                    } else {
-                      numberColor = 'text-gray-600'
-                      numberSize = 'text-base'
-                      rowBackground = ''
-                    }
-
-                    return (
-                      <tr 
-                        key={user.userId}
-                        className={`hover:bg-gray-50 transition-colors ${rowBackground}`}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <span className={`font-bold ${numberColor} ${numberSize} min-w-[2rem] text-center`}>
-                              {position}
-                            </span>
-                            
-                            {PositionIcon && (
-                              <PositionIcon 
-                                size={position === 1 ? 24 : 20} 
-                                className={iconColor} 
-                                strokeWidth={2.5} 
-                              />
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`font-bold ${
-                            position === 1 ? 'text-yellow-700 text-lg' : 'text-gray-900'
-                          }`}>
-                            {user.username}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <span className="text-sm text-gray-600">
-                            ${user.cash.toFixed(2)}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <span className="text-sm text-gray-600">
-                            ${user.sharesValue.toFixed(2)}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <span className={`font-bold text-lg ${
-                            position === 1 ? 'text-yellow-600' : 'text-gray-900'
-                          }`}>
-                            ${user.totalNetWorth.toFixed(2)}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <Leaderboard rows={leaderboard} meId={profile?.id} />
         )}
       </div>
 
-      {/* Trade Modal */}
-      {selectedMarket && tradeSide && (
-        <TradeModal
-          market={selectedMarket}
-          side={tradeSide}
-          onClose={handleCloseModal}
-        />
-      )}
+      {selectedMarket && <TradeModal market={selectedMarket} side={selection.side} onClose={handleClose} />}
     </div>
   )
 }
