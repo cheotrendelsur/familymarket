@@ -31,6 +31,8 @@ export async function loginInBrowser(i) {
   })
   const { data, error } = await client.auth.signInWithPassword({ email: emailOf(c, i), password: c.password })
   if (error) throw new Error(`login ${i}: ${error.message}`)
+  // Los jugadores de prueba ya "vieron" el tutorial (si no, taparía la pantalla que se quiere probar).
+  await client.rpc('complete_tour')
   return data.user
 }
 

@@ -12,6 +12,7 @@ import PageLoader from './components/PageLoader'
 import StatusBanner from './components/StatusBanner'
 import { TradeProvider } from './components/TradeSheet'
 import UpdatePrompt from './components/UpdatePrompt'
+import Tour from './components/tour/Tour'
 import UsernameSetup from './components/UsernameSetup'
 
 // AuthPage se carga de inmediato (es la primera pantalla); el resto bajo demanda.
@@ -55,12 +56,14 @@ function ProfileProblem() {
 }
 
 function AppLayout() {
-  const { user, profile, loading, profileError, needsUsername, refreshProfile } = useAuth()
+  const { user, profile, loading, profileError, needsUsername, needsTour, completeTour, tourReplay, stopTourReplay, refreshProfile } = useAuth()
 
   if (loading) return <PageLoader label="Cargando FamilyMarket..." fullScreen />
   if (!user) return <Navigate to="/auth" replace />
   if (profileError || !profile) return <ProfileProblem />
   if (needsUsername) return <UsernameSetup onComplete={refreshProfile} />
+  // Primera vez: el tutorial reemplaza a la app (no toca datos reales) hasta completarlo o saltarlo.
+  if (needsTour) return <Tour mode="first" onFinish={completeTour} onSkip={completeTour} />
 
   return (
     <GameProvider>
@@ -87,6 +90,7 @@ function AppLayout() {
           </main>
           <BottomNav />
           <CelebrationHost />
+          {tourReplay && <Tour mode="replay" onFinish={stopTourReplay} onSkip={stopTourReplay} />}
           <UpdatePrompt />
         </div>
       </TradeProvider>

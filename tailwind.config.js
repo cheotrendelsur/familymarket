@@ -139,6 +139,28 @@ export default {
           '60%': { transform: 'scale(1.2) rotate(6deg)', opacity: '1' },
           '100%': { transform: 'scale(1) rotate(0)' },
         },
+        'target-pulse': {
+          '0%': { boxShadow: '0 0 0 0 rgba(250,204,21,0.95)' },
+          '70%': { boxShadow: '0 0 0 14px rgba(250,204,21,0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(250,204,21,0)' },
+        },
+        'hand-tap': {
+          '0%, 100%': { transform: 'translate(0, 0) rotate(-18deg) scale(1)' },
+          '50%': { transform: 'translate(-7px, -9px) rotate(-18deg) scale(0.9)' },
+        },
+        'coin-fall': {
+          '0%': { transform: 'translateY(-12vh) rotate(0deg)', opacity: '0' },
+          '10%': { opacity: '1' },
+          '100%': { transform: 'translateY(112vh) rotate(540deg)', opacity: '1' },
+        },
+        'blob-float': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(24px, -30px) scale(1.12)' },
+        },
+        'bubble-in': {
+          '0%': { opacity: '0', transform: 'translateY(10px) scale(0.92)' },
+          '100%': { opacity: '1', transform: 'none' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out both',
@@ -163,6 +185,11 @@ export default {
         'dot-pulse': 'dot-pulse 1.4s ease-in-out infinite',
         'ticker-in': 'ticker-in 0.4s ease-out both',
         'lock-snap': 'lock-snap 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+        'target-pulse': 'target-pulse 1.5s ease-out infinite',
+        'hand-tap': 'hand-tap 1.1s ease-in-out infinite',
+        'coin-fall': 'coin-fall 4s linear infinite',
+        'blob-float': 'blob-float 9s ease-in-out infinite',
+        'bubble-in': 'bubble-in 0.4s cubic-bezier(0.34, 1.4, 0.64, 1) both',
       },
     },
   },

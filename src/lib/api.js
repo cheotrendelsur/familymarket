@@ -95,7 +95,7 @@ export const db = {
     if (mockPromise) return (await mockPromise).db.profile(userId)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, balance, is_admin, is_moderator, email')
+      .select('id, username, balance, is_admin, is_moderator, email, tour_completed_at')
       .eq('id', userId)
       .maybeSingle()
     return { data, error }

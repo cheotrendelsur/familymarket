@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { auth, db } from '../lib/api'
+import { auth, db, rpc } from '../lib/api'
+import { store } from '../lib/storage'
 import { usePolling } from '../hooks/usePolling'
 
 const AuthContext = createContext(null)
@@ -19,6 +20,8 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [profileError, setProfileError] = useState(null)
+  const [tourLocal, setTourLocal] = useState(false) // respaldo si el servidor no alcanzó a guardar «tutorial visto»
+  const [tourReplay, setTourReplay] = useState(false)
   const userIdRef = useRef(null)
 
   // Carga el perfil (con reintentos: justo después del registro el trigger
@@ -38,7 +41,8 @@ export function AuthProvider({ children }) {
             prev.balance === next.balance &&
             prev.username === next.username &&
             prev.is_admin === next.is_admin &&
-            prev.is_moderator === next.is_moderator
+            prev.is_moderator === next.is_moderator &&
+            prev.tour_completed_at === next.tour_completed_at
           ) {
             return prev
           }
@@ -91,6 +95,24 @@ export function AuthProvider({ children }) {
     }
   }, [loadProfile])
 
+  useEffect(() => {
+    setTourLocal(user?.id ? !!store.get(`fm_tour_${user.id}`, false) : false)
+    setTourReplay(false)
+  }, [user?.id])
+
+  /** Marca el tutorial como visto (en el servidor, para que valga en todos sus dispositivos). */
+  const completeTour = useCallback(async () => {
+    const id = userIdRef.current
+    try {
+      await rpc('complete_tour')
+    } catch {
+      /* sin conexión: se recuerda en este dispositivo y se reintenta al volver */
+    }
+    if (id) store.set(`fm_tour_${id}`, true)
+    setTourLocal(true)
+    setProfile((prev) => (prev ? { ...prev, tour_completed_at: prev.tour_completed_at || new Date().toISOString() } : prev))
+  }, [])
+
   const signUp = useCallback((email, password) => auth.signUp(email, password), [])
 
   /**
@@ -140,6 +162,11 @@ export function AuthProvider({ children }) {
       loading,
       profileError,
       needsUsername: !!profile && !profile.username,
+      needsTour: !!profile && !!profile.username && !profile.tour_completed_at && !tourLocal,
+      completeTour,
+      tourReplay,
+      startTourReplay: () => setTourReplay(true),
+      stopTourReplay: () => setTourReplay(false),
       isOwner: !!profile?.is_admin,
       isModerator: !!profile?.is_moderator,
       isStaff: !!profile?.is_admin || !!profile?.is_moderator,
@@ -150,7 +177,7 @@ export function AuthProvider({ children }) {
       retryProfile,
       applyBalance,
     }),
-    [user, profile, loading, profileError, signUp, signIn, signOut, refreshProfile, retryProfile, applyBalance]
+    [user, profile, loading, profileError, tourLocal, tourReplay, completeTour, signUp, signIn, signOut, refreshProfile, retryProfile, applyBalance]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

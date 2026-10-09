@@ -223,6 +223,7 @@ let adminLog = [
   { id: 1, created_at: iso(now() - hour(30)), action: 'moderator_on', admin_username: 'Cheche', target_username: 'Tomas_christiansen', amount: null, detail: {} },
 ]
 let moves = 3
+let tourDone = !(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tour'))
 let revCounter = 1
 
 // ------------------------------------------------------------------ helpers
@@ -556,6 +557,10 @@ const handlers = {
   async admin_archive_and_reset() {
     return { success: true, players: players.length, markets: markets.length }
   },
+  async complete_tour() {
+    tourDone = true
+    return { success: true }
+  },
   async set_username({ p_username }) {
     me.username = p_username
     return { success: true }
@@ -617,7 +622,7 @@ export const db = {
   },
   async profile() {
     await delay(40)
-    return { data: { id: me.id, username: me.username, balance: me.balance, is_admin: me.is_admin, is_moderator: me.is_moderator, email: 'cheche@familia.test' }, error: null }
+    return { data: { id: me.id, username: me.username, balance: me.balance, is_admin: me.is_admin, is_moderator: me.is_moderator, email: 'cheche@familia.test', tour_completed_at: tourDone ? iso(now() - hour(5)) : null }, error: null }
   },
   async uploadImage(path, blob) {
     await delay(200)

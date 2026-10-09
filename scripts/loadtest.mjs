@@ -507,6 +507,21 @@ async function phaseFeatures(U, C) {
     if (ids.length) await call(c, 'mark_notifications_seen', { p_ids: ids })
   }
 
+  section('TUTORIAL · se muestra una sola vez por jugador (dato en el servidor)')
+  const [t4, t5] = [C[4], C[5]]
+  const before = await t4.from('profiles').select('tour_completed_at').eq('id', U[4].id).single()
+  check('un jugador nuevo aún no ha visto el tutorial', before.data?.tour_completed_at === null, JSON.stringify(before.data))
+  const tour1 = await call(t4, 'complete_tour')
+  check('complete_tour marca el tutorial como visto', !tour1.error && !!tour1.data?.tour_completed_at, msg(tour1))
+  const tour2 = await call(t4, 'complete_tour')
+  check('llamarlo otra vez no cambia la fecha (idempotente)', !tour2.error && tour2.data?.tour_completed_at === tour1.data?.tour_completed_at, msg(tour2))
+  const untouched = await t5.from('profiles').select('tour_completed_at').eq('id', U[5].id).single()
+  check('marcar el tutorial de un jugador no afecta a otro', untouched.data?.tour_completed_at === null, JSON.stringify(untouched.data))
+  const anonTour = await mk().rpc('complete_tour')
+  check('un anónimo no puede llamar complete_tour', !!anonTour.error)
+  const forge = await t5.from('profiles').update({ tour_completed_at: null }).eq('id', U[4].id).select()
+  check('un jugador no puede editar el tutorial de otro por la API', !!forge.error || (forge.data?.length ?? 0) === 0)
+
   section('ROLES · moderadores (los nombra el dueño)')
   const denied = await call(p1, 'staff_create_market', { p_question: '[TEST] jugador no puede crear' })
   check('jugador normal NO puede crear mercados', !!denied.error && /moderadores/i.test(msg(denied)), msg(denied))

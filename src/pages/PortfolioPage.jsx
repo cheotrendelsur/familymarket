@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Briefcase, CheckCircle, DollarSign, History, TrendingUp, Vibrate, Volume2, VolumeX, Zap } from 'lucide-react'
+import { Briefcase, CheckCircle, DollarSign, GraduationCap, History, TrendingUp, Vibrate, Volume2, VolumeX, Zap } from 'lucide-react'
 import { db } from '../lib/api'
 import { buildPosition, groupPositions } from '../lib/portfolio'
 import { money } from '../lib/format'
@@ -60,7 +60,7 @@ function Toggle({ on, onChange, icon: Icon, label }) {
 }
 
 export default function PortfolioPage() {
-  const { profile } = useAuth()
+  const { profile, startTourReplay } = useAuth()
   const { marketsById, config, daily } = useGame()
   const { raw, refresh } = useMyPositions({ interval: 45000, enabled: !!profile })
   const [operations, setOperations] = useState([])
@@ -217,6 +217,12 @@ export default function PortfolioPage() {
             }}
           />
         </div>
+        <button
+          onClick={startTourReplay}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold border bg-white border-gray-200 text-polyblue"
+        >
+          <GraduationCap size={17} /> Ver el tutorial otra vez
+        </button>
       </section>
 
       <button onClick={refresh} className="w-full text-center text-sm text-gray-400 py-2">

@@ -36,6 +36,19 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 
 El dueño nombra moderadores desde **Admin → Gente** (un interruptor en la fila de cada jugador).
 
+### Tutorial interactivo (una vez por jugador)
+
+La primera vez que un jugador entra (ya con su nombre elegido) ve un tutorial tipo juego, con la mascota **Fami** 🦊 y estrellas:
+**no se puede avanzar sin hacer cada operación** en un mercado de práctica (dinero de mentira, la misma matemática que el juego real):
+leer un mercado, comprar, ver cómo el precio se mueve y vender, «Reintentar al nuevo precio», cierre de apuestas y resolución (con la pantalla
+de victoria y confeti), ranking y perfiles, y moverse por la barra de abajo. Los moderadores y el dueño reciben misiones extra
+(publicar una sugerencia, resolver un mercado y, solo el dueño, **nombrar moderadores**).
+
+- El «ya lo vio» se guarda en el servidor (`profiles.tour_completed_at`, RPC `complete_tour`, migración 012): vale en cualquier celular y no se repite.
+- Se puede volver a ver en **Portafolio → Preferencias → «Ver el tutorial otra vez»** (en ese modo no cambia nada del servidor).
+- Para previsualizarlo sin tocar datos: `npm run dev` y `http://localhost:5173/?mock=1&role=owner&tour=1` (`role=player` para la versión de jugador).
+- Código: `src/components/tour/` (`Tour.jsx` motor, `scenes.jsx` misiones, `sandbox.js` mercado de práctica, `Mini.jsx` piezas de interfaz).
+
 ### Panel de administración (dueño y moderadores)
 
 Pensado para operarlo con el pulgar:
@@ -101,7 +114,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…011). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…012). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+concurrencia), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -123,6 +136,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 009 | Bucket de fotos `market-images` (lectura pública, escritura solo staff) |
 | 010 | Editar la descripción de un mercado múltiple la cambia en todas sus opciones |
 | 011 | El staff puede ver (y así borrar) objetos del bucket de fotos |
+| 012 | Tutorial: `profiles.tour_completed_at` + `complete_tour()` |
 
 ## Desarrollo
 
