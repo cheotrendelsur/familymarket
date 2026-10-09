@@ -34,7 +34,22 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | **Moderador** (`is_moderator`) | Crear, editar y resolver mercados, subir fotos, revisar sugerencias y ver el registro de actividad |
 | **Jugador** | Operar, sugerir mercados, ver ranking, perfiles y feed en vivo |
 
-El dueño nombra moderadores desde **Admin → Jugadores** (interruptor «Hacer moderador»).
+El dueño nombra moderadores desde **Admin → Gente** (un interruptor en la fila de cada jugador).
+
+### Panel de administración (dueño y moderadores)
+
+Pensado para operarlo con el pulgar:
+
+- **Hoy:** solo lo pendiente. «Por resolver» (mercados que ya cerraron apuestas) con botones grandes **Gana Sí / Gana No**
+  (en los múltiples: «Gana este» en cada opción), «Sugerencias nuevas» con **Publicar** de un toque (o Editar / No) y los que cierran
+  en 24 h con «Cerrar ya». La insignia roja de la pestaña Admin cuenta lo que espera.
+- **Crear:** pregunta, foto (cámara o galería), atajos de cierre («En 2 horas», «Hoy 8 pm», «Mañana»…) y categoría. Descripción y
+  mercado sorpresa están en «Más opciones».
+- **Mercados:** lista por estado; resolver con un toque y el menú «⋯» (editar, cerrar apuestas, anular, deshacer resolución).
+- **Gente** (solo dueño): interruptor de moderador por jugador, nombre, contraseña y saldo.
+- **Más:** registro de actividad, sugerencias ya revisadas y «Empezar una partida nueva» (solo dueño).
+- **Atajos en la app:** al abrir cualquier mercado, el staff ve un recuadro «Solo tú ves esto» para resolverlo, cerrarlo o editarlo
+  ahí mismo, y en Inicio hay un botón flotante **Crear**.
 
 Los valores numéricos (fee, límite diario, liquidez, saldo inicial, zona horaria) viven en la tabla
 `public.game_settings` (una fila). Para cambiarlos, en el SQL Editor de Supabase:

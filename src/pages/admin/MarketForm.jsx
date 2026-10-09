@@ -10,7 +10,8 @@ import { CategoryPicker, ClosesAtField, Field, Notice, inputClass } from './admi
 
 /**
  * Formulario de mercado (crear uno nuevo o aprobar una sugerencia).
- * `onSubmit(values)` recibe: { kind, question, topic, options, description, category,
+ * Lo esencial va arriba (pregunta, foto, cierre, categoría) y lo demás queda en «Más opciones».
+ * `onSubmit(values)` recibe: { kind, question, options, description, category,
  *   closes_at, image: {image_url, image_thumb_url, image_color} | null, target_users }
  *  · kindLocked: 'single' | 'multiple' para fijar el tipo (sugerencias)
  *  · fixedOptions: opciones ya definidas por quien sugirió (no se editan)
@@ -24,12 +25,13 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
   const [closesLocal, setClosesLocal] = useState('')
   const [processed, setProcessed] = useState(null)
   const [hiddenFrom, setHiddenFrom] = useState([])
-  const [showHidden, setShowHidden] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   const [players, setPlayers] = useState([])
   const [busy, setBusy] = useState(null) // null | 'upload' | 'save'
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    if (!showMore || players.length) return undefined
     let cancelled = false
     rpc('staff_list_players')
       .then((p) => !cancelled && setPlayers(p || []))
@@ -37,7 +39,7 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [showMore, players.length])
 
   const multiple = kind === 'multiple'
   const cleanOptions = (fixedOptions || options).map((o) => o.trim()).filter(Boolean)
@@ -86,6 +88,7 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
               key={id}
               type="button"
               onClick={() => setKind(id)}
+              aria-pressed={kind === id}
               className={`py-2.5 rounded-lg text-sm font-bold transition-all ${kind === id ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
             >
               {label}
@@ -94,24 +97,21 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
         </div>
       )}
 
-      <Field
-        label={multiple ? 'Tema general *' : 'Pregunta *'}
-        hint={multiple ? 'Ej: ¿Quién comerá más pizza?' : 'Debe poder responderse con Sí o No'}
-      >
+      <Field label={multiple ? 'Tema general' : 'Pregunta'} hint={multiple ? 'Ej: ¿Quién comerá más pizza?' : 'Que se pueda responder con Sí o No.'}>
         <input
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder={multiple ? '¿Quién comerá más pizza?' : '¿Lloverá mañana en Margarita?'}
           maxLength={multiple ? 120 : 200}
-          className={inputClass}
+          className={`${inputClass} text-lg font-semibold`}
           required
         />
       </Field>
 
       {multiple && (
         <div className="space-y-2.5 bg-blue-50/60 p-4 rounded-2xl border border-blue-100">
-          <p className="text-sm font-bold text-gray-700">Opciones * (una por participante)</p>
+          <p className="text-sm font-bold text-gray-700">Opciones (una por participante)</p>
           {fixedOptions ? (
             <ul className="space-y-1.5">
               {fixedOptions.map((o) => (
@@ -147,65 +147,70 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
         </div>
       )}
 
-      <Field label="Categoría">
-        <CategoryPicker value={category} onChange={setCategory} />
+      <Field label="Foto">
+        <ImagePicker value={processed} onChange={setProcessed} category={category} disabled={!!busy} />
       </Field>
 
-      <Field label="Cierre de apuestas (opcional)">
+      <Field label="¿Cuándo cierran las apuestas?">
         <ClosesAtField value={closesLocal} onChange={setClosesLocal} />
         {closesInPast && <p className="text-xs text-red-600 mt-1.5 font-semibold">La fecha de cierre debe estar en el futuro.</p>}
       </Field>
 
-      <Field label="Descripción (opcional)" hint="Cuenta cómo se sabrá el resultado.">
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-          maxLength={1000}
-          placeholder="Contexto adicional sobre el mercado…"
-          className={`${inputClass} resize-none`}
-        />
-      </Field>
-
-      <Field label="Foto (opcional)" hint="Se recorta y comprime sola para que cargue rápido.">
-        <ImagePicker value={processed} onChange={setProcessed} category={category} disabled={!!busy} />
+      <Field label="Categoría">
+        <CategoryPicker value={category} onChange={setCategory} />
       </Field>
 
       <div className="rounded-2xl border border-gray-200 overflow-hidden">
         <button
           type="button"
-          onClick={() => setShowHidden(!showHidden)}
+          onClick={() => setShowMore(!showMore)}
           className="w-full flex items-center justify-between px-4 py-3.5 bg-gray-50 text-left"
-          aria-expanded={showHidden}
+          aria-expanded={showMore}
         >
           <span className="font-bold text-gray-800 text-sm">
-            👻 Mercado sorpresa {hiddenFrom.length > 0 && <span className="text-polyblue">· oculto para {hiddenFrom.length}</span>}
+            Más opciones <span className="font-normal text-gray-400">· descripción, mercado sorpresa</span>
+            {hiddenFrom.length > 0 && <span className="text-polyblue"> · oculto para {hiddenFrom.length}</span>}
           </span>
-          <ChevronDown size={18} className={`transition-transform text-gray-400 ${showHidden ? 'rotate-180' : ''}`} />
+          <ChevronDown size={18} className={`transition-transform text-gray-400 ${showMore ? 'rotate-180' : ''}`} />
         </button>
-        {showHidden && (
-          <div className="p-4 space-y-3 animate-fade-in">
-            <p className="text-xs text-gray-500">Elige a quién quieres <b>ocultarle</b> este mercado (por ejemplo, la persona sorprendida). Si no eliges a nadie, lo ven todos.</p>
-            <div className="grid grid-cols-2 gap-2">
-              {players.map((u) => {
-                const selected = hiddenFrom.includes(u.id)
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => setHiddenFrom(selected ? hiddenFrom.filter((id) => id !== u.id) : [...hiddenFrom, u.id])}
-                    aria-pressed={selected}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border-2 text-left transition-colors ${
-                      selected ? 'bg-blue-50 border-polyblue' : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${selected ? 'bg-polyblue border-polyblue' : 'bg-gray-100 border-gray-300'}`}>
-                      {selected && <Check size={13} className="text-white" strokeWidth={3} />}
-                    </span>
-                    <span className={`text-sm font-bold truncate ${selected ? 'text-polyblue' : 'text-gray-700'}`}>{u.username}</span>
-                  </button>
-                )
-              })}
+        {showMore && (
+          <div className="p-4 space-y-5 animate-fade-in">
+            <Field label="Descripción" hint="Cuenta cómo se sabrá el resultado.">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                placeholder="Contexto adicional sobre el mercado…"
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
+            <div>
+              <p className="text-sm font-bold text-gray-700 mb-1">👻 Mercado sorpresa</p>
+              <p className="text-xs text-gray-500 mb-3">
+                Elige a quién quieres <b>ocultarle</b> este mercado (por ejemplo, la persona sorprendida). Si no eliges a nadie, lo ven todos.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {players.map((u) => {
+                  const selected = hiddenFrom.includes(u.id)
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => setHiddenFrom(selected ? hiddenFrom.filter((id) => id !== u.id) : [...hiddenFrom, u.id])}
+                      aria-pressed={selected}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border-2 text-left transition-colors ${
+                        selected ? 'bg-blue-50 border-polyblue' : 'bg-white border-gray-200'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${selected ? 'bg-polyblue border-polyblue' : 'bg-gray-100 border-gray-300'}`}>
+                        {selected && <Check size={13} className="text-white" strokeWidth={3} />}
+                      </span>
+                      <span className={`text-sm font-bold truncate ${selected ? 'text-polyblue' : 'text-gray-700'}`}>{u.username}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

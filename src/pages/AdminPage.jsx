@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useGame } from '../context/GameContext'
@@ -7,22 +8,44 @@ import CreateTab from './admin/CreateTab'
 import DangerTab from './admin/DangerTab'
 import MarketsTab from './admin/MarketsTab'
 import PlayersTab from './admin/PlayersTab'
-import SuggestionsTab from './admin/SuggestionsTab'
+import SuggestionsList from './admin/SuggestionsList'
+import TodayTab from './admin/TodayTab'
+import { Disclosure } from './admin/adminUi'
+
+function MoreTab({ isOwner }) {
+  return (
+    <div className="space-y-3">
+      <Disclosure title="Registro de actividad" hint="Quién creó, resolvió o cambió qué">
+        <ActivityTab />
+      </Disclosure>
+      <Disclosure title="Sugerencias ya revisadas" hint="Las que aprobaste o rechazaste">
+        <SuggestionsList view="history" />
+      </Disclosure>
+      {isOwner && (
+        <Disclosure title="Empezar una partida nueva" hint="Archiva esta partida y deja todo en cero" danger>
+          <DangerTab />
+        </Disclosure>
+      )}
+    </div>
+  )
+}
 
 export default function AdminPage() {
   const { isStaff, isOwner } = useAuth()
-  const { config, pendingSuggestions } = useGame()
-  const [tab, setTab] = useState('create')
+  const { pendingSuggestions, activeItems } = useGame()
+  const location = useLocation()
+  const [tab, setTab] = useState(location.state?.tab || 'today')
+
+  const todo = (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending').length
 
   const tabs = useMemo(() => {
     const list = [
+      ['today', 'Hoy'],
       ['create', 'Crear'],
       ['markets', 'Mercados'],
-      ['suggestions', 'Sugerencias'],
     ]
-    if (isOwner) list.push(['players', 'Jugadores'])
-    list.push(['activity', 'Actividad'])
-    if (isOwner) list.push(['danger', 'Nueva partida'])
+    if (isOwner) list.push(['people', 'Gente'])
+    list.push(['more', 'Más'])
     return list
   }, [isOwner])
 
@@ -40,28 +63,24 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 space-y-4">
-      <div className="bg-gradient-to-r from-polyblue to-blue-600 rounded-3xl p-5 text-white shadow-xl shadow-blue-500/20">
-        <h1 className="text-2xl font-extrabold">{isOwner ? 'Panel del dueño' : 'Panel de moderador'}</h1>
-        <p className="text-blue-100 text-sm mt-0.5">
-          Liquidez {config.initial_liquidity} · Comisión {(config.fee_rate * 100).toFixed(0)}% · {config.daily_limit} movimientos al día
-        </p>
+      <div>
+        <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">{isOwner ? 'Panel del dueño' : 'Panel de moderador'}</h1>
+        <p className="text-sm text-gray-500">{isOwner ? 'Todo lo que puedes hacer, en un solo lugar' : 'Crea y resuelve mercados, y revisa sugerencias'}</p>
       </div>
 
-      <div className="-mx-4 px-4 overflow-x-auto scrollbar-hide sticky z-20 bg-polygray-bg/95 backdrop-blur py-2" style={{ top: 'calc(56px + env(safe-area-inset-top))' }}>
-        <div className="flex gap-2 w-max pr-4">
+      <div className="sticky z-20 -mx-4 px-4 py-2 bg-polygray-bg" style={{ top: 'calc(56px + env(safe-area-inset-top))' }}>
+        <div className="grid gap-1.5 bg-gray-200/70 rounded-2xl p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
           {tabs.map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               aria-pressed={tab === id}
-              className={`relative flex-shrink-0 h-10 px-4 rounded-full text-sm font-bold border transition-colors ${
-                tab === id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'
-              }`}
+              className={`relative h-10 rounded-xl text-sm font-bold transition-all ${tab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
             >
               {label}
-              {id === 'suggestions' && pendingSuggestions > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
-                  {pendingSuggestions}
+              {id === 'today' && todo > 0 && (
+                <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {todo}
                 </span>
               )}
             </button>
@@ -70,12 +89,11 @@ export default function AdminPage() {
       </div>
 
       <div key={tab} className="animate-fade-in">
-        {tab === 'create' && <CreateTab />}
+        {tab === 'today' && <TodayTab onGo={setTab} />}
+        {tab === 'create' && <CreateTab onDone={() => setTab('today')} />}
         {tab === 'markets' && <MarketsTab />}
-        {tab === 'suggestions' && <SuggestionsTab />}
-        {tab === 'players' && isOwner && <PlayersTab />}
-        {tab === 'activity' && <ActivityTab />}
-        {tab === 'danger' && isOwner && <DangerTab />}
+        {tab === 'people' && isOwner && <PlayersTab />}
+        {tab === 'more' && <MoreTab isOwner={isOwner} />}
       </div>
     </div>
   )

@@ -14,6 +14,7 @@ import { StateBadge } from '../components/Countdown'
 import { ActionBar, BackButton, PendingBlock, PositionStrip, ProbabilityHeader, ResultBlock } from '../components/DetailParts'
 import MarketImage from '../components/MarketImage'
 import { PriceChart } from '../components/PriceCharts'
+import StaffBar from '../components/StaffBar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { useTrade } from '../components/TradeSheet'
 
@@ -95,6 +96,7 @@ export default function MarketPage() {
 
       {market.state === 'resolved' && <ResultBlock market={market} />}
       {market.state === 'pending' && <PendingBlock />}
+      <StaffBar market={market} />
 
       <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
         <PriceChart marketId={id} currentYes={yes} live={market.state !== 'resolved'} />

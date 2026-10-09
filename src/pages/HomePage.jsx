@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useState } from 'react'
 import { useNavigate, useNavigationType } from 'react-router-dom'
-import { ChevronDown, Flame, Lightbulb, SearchX, TrendingUp } from 'lucide-react'
+import { ChevronDown, Flame, Lightbulb, Plus, SearchX, TrendingUp } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import { useGame } from '../context/GameContext'
 import { useActivity } from '../hooks/useActivity'
 import { matchesQuery, SORTS } from '../lib/markets'
@@ -73,6 +74,7 @@ function Section({ title, count, children, tone }) {
 const Grid = ({ children }) => <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">{children}</div>
 
 export default function HomePage() {
+  const { isStaff } = useAuth()
   const { activeItems, resolvedItems, marketsLoaded } = useGame()
   const { openTrade } = useTrade()
   const navigate = useNavigate()
@@ -259,6 +261,17 @@ export default function HomePage() {
             </section>
           )}
         </>
+      )}
+
+      {isStaff && (
+        <button
+          onClick={() => navigate('/admin', { state: { tab: 'create' } })}
+          className="fixed right-4 z-30 flex items-center gap-2 bg-polyblue text-white font-bold pl-4 pr-5 h-14 rounded-full shadow-lift shadow-blue-500/40 tap-feedback"
+          style={{ bottom: 'calc(76px + env(safe-area-inset-bottom))' }}
+          aria-label="Crear mercado"
+        >
+          <Plus size={22} strokeWidth={2.8} /> Crear
+        </button>
       )}
     </div>
   )

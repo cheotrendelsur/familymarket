@@ -7,7 +7,7 @@ import { friendlyError, money } from '../../lib/format'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Avatar } from '../../components/Leaderboard'
 import Sheet from '../../components/ui/Sheet'
-import { Field, Notice, Switch, inputClass } from './adminUi'
+import { Field, Notice, inputClass } from './adminUi'
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/
 
@@ -190,28 +190,35 @@ export default function PlayersTab() {
           const me = p.id === profile?.id
           return (
             <div key={p.id}>
-              <button onClick={() => setOpen(expanded ? null : p.id)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left" aria-expanded={expanded}>
-                <Avatar name={p.username || '?'} size={40} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-900 truncate">{p.username || '(sin nombre)'}</span>
-                    {p.is_admin && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">Dueño</span>}
-                    {p.is_moderator && !p.is_admin && <span className="text-[10px] font-bold uppercase bg-blue-100 text-polyblue rounded px-1.5 py-0.5">Moderador</span>}
+              <div className="flex items-center gap-2 pr-3">
+                <button onClick={() => setOpen(expanded ? null : p.id)} className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-1 py-3.5 text-left" aria-expanded={expanded}>
+                  <Avatar name={p.username || '?'} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-900 truncate">{p.username || '(sin nombre)'}</span>
+                      {p.is_admin && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">Dueño</span>}
+                    </div>
+                    <p className="text-xs text-gray-500 tabular-nums">Efectivo {money(p.balance)}</p>
                   </div>
-                  <p className="text-xs text-gray-500 tabular-nums">Efectivo {money(p.balance)}</p>
-                </div>
-                <ChevronDown size={18} className={`text-gray-300 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-              </button>
+                  <ChevronDown size={18} className={`text-gray-300 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+                {!p.is_admin && (
+                  <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleModerator(p, !p.is_moderator)}
+                      aria-pressed={!!p.is_moderator}
+                      aria-label={p.is_moderator ? `Quitar de moderador a ${p.username}` : `Hacer moderador a ${p.username}`}
+                      className={`w-12 h-7 flex items-center rounded-full p-0.5 transition-colors ${p.is_moderator ? 'bg-polyblue' : 'bg-gray-300'}`}
+                    >
+                      <span className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${p.is_moderator ? 'translate-x-5' : ''}`} />
+                    </button>
+                    <span className={`text-[10px] font-bold ${p.is_moderator ? 'text-polyblue' : 'text-gray-400'}`}>Moderador</span>
+                  </div>
+                )}
+              </div>
               {expanded && (
                 <div className="px-4 pb-4 space-y-3 animate-fade-in">
-                  {!p.is_admin && (
-                    <Switch
-                      on={!!p.is_moderator}
-                      onChange={(v) => toggleModerator(p, v)}
-                      label={p.is_moderator ? 'Es moderador' : 'Hacer moderador'}
-                      hint="Puede crear y resolver mercados"
-                    />
-                  )}
                   <div className="grid grid-cols-3 gap-2">
                     <button onClick={() => setSheet({ kind: 'rename', player: p })} className="flex flex-col items-center gap-1 py-3 rounded-xl bg-gray-50 text-gray-700 text-xs font-bold">
                       <Pencil size={18} /> Nombre

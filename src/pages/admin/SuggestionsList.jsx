@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Check, Inbox, X } from 'lucide-react'
+import { Check, Inbox, Pencil, X } from 'lucide-react'
 import { rpc } from '../../lib/api'
 import { useGame } from '../../context/GameContext'
 import { usePolling } from '../../hooks/usePolling'
@@ -36,16 +36,16 @@ function RejectSheet({ suggestion, onClose, onDone }) {
   return (
     <Sheet open onClose={busy ? undefined : onClose} title={suggestion.question} subtitle="Rechazar sugerencia">
       <div className="space-y-4 pb-4">
-        <Field label="Motivo (opcional)" hint="Se lo mostramos a quien la sugirió.">
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={200} className={`${inputClass} resize-none`} />
-        </Field>
         <div className="flex flex-wrap gap-2">
           {QUICK_REASONS.map((r) => (
-            <button key={r} onClick={() => setReason(r)} className="px-3 py-1.5 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+            <button key={r} onClick={() => setReason(r)} aria-pressed={reason === r} className={`px-3 py-2 rounded-full text-sm font-semibold ${reason === r ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}>
               {r}
             </button>
           ))}
         </div>
+        <Field label="Motivo (opcional)" hint="Se lo mostramos a quien la sugirió.">
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={200} className={`${inputClass} resize-none`} />
+        </Field>
         {error && <Notice tone="error">{error}</Notice>}
         <button onClick={send} disabled={busy} className="w-full bg-polyred text-white py-4 rounded-2xl font-bold text-lg disabled:opacity-50">
           {busy ? 'Enviando…' : 'Rechazar'}
@@ -78,7 +78,7 @@ function ApproveSheet({ suggestion, onClose, onDone }) {
     onClose()
   }
   return (
-    <Sheet open onClose={onClose} title={suggestion.question} subtitle={`Aprobar · sugerido por ${suggestion.username}`}>
+    <Sheet open onClose={onClose} title={suggestion.question} subtitle={`Editar y publicar · de ${suggestion.username}`}>
       <div className="pb-4">
         <MarketForm
           initial={{ question: suggestion.question, description: suggestion.description, category: suggestion.category }}
@@ -97,12 +97,13 @@ const STATUS_STYLE = {
   rejected: 'bg-rose-50 text-polyred',
 }
 
-export default function SuggestionsTab() {
+/** Lista de sugerencias: `view` = 'pending' (por revisar) o 'history' (ya revisadas). */
+export default function SuggestionsList({ view = 'pending', emptyText }) {
   const { refreshMarkets, refreshSession } = useGame()
-  const [view, setView] = useState('pending')
   const [list, setList] = useState(null)
   const [approving, setApproving] = useState(null)
   const [rejecting, setRejecting] = useState(null)
+  const [publishing, setPublishing] = useState(null)
 
   const load = useCallback(async () => {
     const data = await rpc('staff_list_suggestions', { p_status: view === 'pending' ? 'pending' : null })
@@ -110,38 +111,35 @@ export default function SuggestionsTab() {
   }, [view])
   const { refresh } = usePolling(load, { interval: 20000 })
 
-  const changeView = (v) => {
-    setView(v)
-    setList(null)
-  }
   const done = () => {
     refresh()
     refreshMarkets()
     refreshSession()
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-1 bg-gray-100 rounded-xl p-1">
-        {[
-          ['pending', 'Pendientes'],
-          ['history', 'Historial'],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => changeView(id)}
-            className={`py-2.5 rounded-lg text-sm font-bold transition-all ${view === id ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+  // Publicar tal cual la mandó el jugador, de un toque.
+  const publishNow = async (s) => {
+    setPublishing(s.id)
+    try {
+      await rpc('staff_review_suggestion', { p_id: s.id, p_action: 'approve' })
+      haptic(HAPTIC.success)
+      fireSoftConfetti()
+      toast.success('¡Publicado! Le avisamos a quien lo sugirió.', { duration: 4500 })
+      done()
+    } catch (err) {
+      toast.error(friendlyError(err), { duration: 6000 })
+    } finally {
+      setPublishing(null)
+    }
+  }
 
+  return (
+    <div className="space-y-3">
       {list === null && <div className="skeleton h-28 rounded-2xl" />}
       {list && list.length === 0 && (
-        <div className="text-center py-14 bg-white rounded-2xl border border-gray-200 text-gray-400">
-          <Inbox size={40} className="mx-auto mb-2 text-gray-300" />
-          {view === 'pending' ? 'No hay sugerencias pendientes. ¡Todo al día!' : 'Todavía no has revisado ninguna.'}
+        <div className="text-center py-10 bg-white rounded-2xl border border-gray-200 text-gray-400">
+          <Inbox size={36} className="mx-auto mb-2 text-gray-300" />
+          {emptyText || (view === 'pending' ? 'No hay sugerencias por revisar.' : 'Todavía no has revisado ninguna.')}
         </div>
       )}
 
@@ -170,12 +168,19 @@ export default function SuggestionsTab() {
             </p>
 
             {s.status === 'pending' ? (
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                <button onClick={() => setRejecting(s)} className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-rose-50 text-polyred font-bold tap-feedback">
-                  <X size={18} strokeWidth={2.6} /> Rechazar
+              <div className="grid grid-cols-[auto_auto_1fr] gap-2 mt-3">
+                <button onClick={() => setRejecting(s)} aria-label="Rechazar" className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-rose-50 text-polyred font-bold tap-feedback">
+                  <X size={18} strokeWidth={2.6} /> No
                 </button>
-                <button onClick={() => setApproving(s)} className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-polygreen text-white font-bold shadow-md shadow-green-500/20 tap-feedback">
-                  <Check size={18} strokeWidth={2.8} /> Aprobar
+                <button onClick={() => setApproving(s)} aria-label="Editar y publicar" className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold tap-feedback">
+                  <Pencil size={16} /> Editar
+                </button>
+                <button
+                  onClick={() => publishNow(s)}
+                  disabled={publishing === s.id}
+                  className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-polygreen text-white font-bold shadow-md shadow-green-500/20 tap-feedback disabled:opacity-60"
+                >
+                  <Check size={18} strokeWidth={2.8} /> {publishing === s.id ? 'Publicando…' : 'Publicar'}
                 </button>
               </div>
             ) : (

@@ -5,7 +5,7 @@ import { rpc } from '../../lib/api'
 import { useGame } from '../../context/GameContext'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { friendlyError, money } from '../../lib/format'
-import { Card, Field, inputClass } from './adminUi'
+import { Field, inputClass } from './adminUi'
 
 export default function DangerTab() {
   const { config, refreshMarkets, refreshSession } = useGame()
@@ -40,8 +40,9 @@ export default function DangerTab() {
   }
 
   return (
-    <Card danger title="Nueva partida" subtitle="Archiva esta partida en «Recuerdos» y empieza de cero" icon={<Archive size={22} />} tone="bg-red-500">
+    <div>
       <div className="space-y-4">
+        <p className="text-sm text-gray-600">Guarda esta partida completa en «Recuerdos» y deja a todos en {money(config.initial_balance)} sin mercados. Las cuentas y los moderadores se conservan.</p>
         <Field label="Título del recuerdo (opcional)">
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="FamilyMarket · Viaje a Margarita" className={inputClass} maxLength={80} />
         </Field>
@@ -56,6 +57,6 @@ export default function DangerTab() {
           <Archive size={20} /> {loading ? 'Archivando…' : 'Archivar y reiniciar partida'}
         </button>
       </div>
-    </Card>
+    </div>
   )
 }

@@ -14,6 +14,7 @@ import { StateBadge } from '../components/Countdown'
 import { BackButton, PositionStrip } from '../components/DetailParts'
 import MarketImage from '../components/MarketImage'
 import { GroupChart } from '../components/PriceCharts'
+import StaffBar from '../components/StaffBar'
 import { Skeleton } from '../components/ui/Skeleton'
 import YesNoButtons from '../components/YesNoButtons'
 import { useTrade } from '../components/TradeSheet'
@@ -131,6 +132,8 @@ export default function GroupPage() {
           <p className="text-2xl font-extrabold text-polygreen">{winners.map((m) => m.question).join(' · ')}</p>
         </div>
       )}
+
+      <StaffBar group={item.markets} />
 
       <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
         <GroupChart groupId={groupId} options={item.markets} live={live} />

@@ -14,7 +14,7 @@ const ADMIN_TAB = { to: '/admin', label: 'Admin', icon: Settings }
 
 export default function BottomNav() {
   const { isStaff } = useAuth()
-  const { pendingSuggestions } = useGame()
+  const { pendingSuggestions, activeItems } = useGame()
   const { pathname } = useLocation()
   const tabs = isStaff ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
 
@@ -29,7 +29,8 @@ export default function BottomNav() {
           // Las pantallas de detalle de un mercado cuelgan de "Inicio".
           const isActive =
             tab.to === '/' ? pathname === '/' || pathname.startsWith('/m/') || pathname.startsWith('/g/') : pathname.startsWith(tab.to)
-          const badge = tab.to === '/admin' && pendingSuggestions > 0 ? pendingSuggestions : 0
+          // Lo que espera al staff: sugerencias por revisar + mercados que ya cerraron y falta resolver.
+          const badge = tab.to === '/admin' ? (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending').length : 0
           return (
             <NavLink
               key={tab.to}
