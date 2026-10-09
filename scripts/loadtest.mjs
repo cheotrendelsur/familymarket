@@ -713,6 +713,8 @@ async function phaseFeatures(U, C) {
   const okImg = await call(admin, 'staff_create_market', { p_question: '[TEST] con foto', p_image_url: pub, p_image_thumb_url: pub, p_image_color: '#336699' })
   check('mercado con foto subida desde la app se crea (banner + miniatura + color)', !okImg.error, msg(okImg))
   await admin.storage.from('market-images').remove([nm, nmMod])
+  const left = await admin.storage.from('market-images').list('test', { limit: 100 })
+  check('el staff puede borrar fotos del bucket', !left.error && !left.data?.some((f) => nm.endsWith(f.name) || nmMod.endsWith(f.name)), left.error?.message)
 
   // limpieza de roles
   await call(admin, 'admin_set_moderator', { p_user_id: id1, p_value: false })

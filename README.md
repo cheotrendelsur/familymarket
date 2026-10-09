@@ -86,7 +86,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…010). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…011). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+concurrencia), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -107,6 +107,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 008 | `get_networth_race`, `get_player_profile` (estadísticas), arreglo del archivado (columnas explícitas) |
 | 009 | Bucket de fotos `market-images` (lectura pública, escritura solo staff) |
 | 010 | Editar la descripción de un mercado múltiple la cambia en todas sus opciones |
+| 011 | El staff puede ver (y así borrar) objetos del bucket de fotos |
 
 ## Desarrollo
 
