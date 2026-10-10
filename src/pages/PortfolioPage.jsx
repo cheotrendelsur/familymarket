@@ -10,6 +10,7 @@ import { useToggleSet } from '../hooks/useToggleSet'
 import { haptic, hapticsEnabled, playSound, setHapticsEnabled, setSoundEnabled, soundEnabled } from '../lib/fx'
 import { ChangePasswordSheet } from '../components/ChangePasswordSheet'
 import GroupAccordion from '../components/GroupAccordion'
+import NotificationsCard from '../components/NotificationsCard'
 import PortfolioChart from '../components/PortfolioChart'
 import OperationsList from '../components/OperationsList'
 import PositionCard from '../components/PositionCard'
@@ -224,6 +225,8 @@ export default function PortfolioPage() {
         </div>
         <ChangePasswordSheet open={pwOpen} onClose={() => setPwOpen(false)} />
       </section>
+
+      <NotificationsCard />
 
       <section>
         <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Preferencias de este dispositivo</h2>

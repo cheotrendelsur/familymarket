@@ -33,6 +33,8 @@ const players = NAMES.map((username, i) => ({
 const me = players[0]
 const byId = (id) => players.find((p) => p.id === id)
 const signup = { code: 'DEMO2026', is_open: true, max_players: 60 }
+let pushDevices = 0
+const pushPrefs = { new_markets: true, closing: true, results: true, suggestions: true }
 const helpRequests = [{ id: 1, name: 'Mari', note: 'soy la hermana de Tomi', created_at: iso(now() - min(7)) }]
 const settings = { ...DEFAULT_CONFIG, hidden_reward_pct: 0.02, hidden_reward_cap: 40, hidden_reward_mode: 'shared' }
 const invites = [
@@ -604,6 +606,25 @@ const handlers = {
     if (k.length < 3) return []
     return players.filter((p) => !p.disabled_at && p.username.toLowerCase() !== String(p_username).toLowerCase() && p.username.toLowerCase().replace(/[^a-z]/g, '') === k).map((p) => p.username)
   },
+  async get_push_state() {
+    return { public_key: 'MOCK_PUBLIC_KEY', devices: pushDevices, prefs: { ...pushPrefs } }
+  },
+  async set_push_prefs({ p_new_markets, p_closing, p_results, p_suggestions }) {
+    Object.assign(pushPrefs, { new_markets: p_new_markets, closing: p_closing, results: p_results, suggestions: p_suggestions })
+    return { success: true }
+  },
+  async save_push_subscription() {
+    pushDevices = Math.max(pushDevices, 1)
+    return { success: true }
+  },
+  async remove_push_subscription() {
+    pushDevices = 0
+    return { success: true }
+  },
+  async push_send_test() {
+    if (!pushDevices) throw new Error('Este teléfono todavía no tiene las notificaciones activadas')
+    return { success: true }
+  },
   async password_changed() {
     me.needs_password_change = false
     return { success: true }
@@ -859,3 +880,6 @@ window.__mock = {
 }
 // ?reward=1 -> arranca con el aviso del premio por mercado sorpresa (vista previa / pruebas)
 if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('reward')) window.__mock.reward()
+// ?push=ask|denied|install|old|active|unsupported -> simula la situación de las notificaciones de este teléfono.
+// Sin ?push el modo demo no muestra el aviso de notificaciones (así no estorba en las demás pruebas).
+if (typeof window !== 'undefined') window.__fmPush = { status: new URLSearchParams(window.location.search).get('push') || 'unsupported' }

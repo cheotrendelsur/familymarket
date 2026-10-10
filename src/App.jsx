@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { GameProvider } from './context/GameContext'
@@ -10,6 +10,7 @@ import CelebrationHost from './components/CelebrationHost'
 import { PasswordBanner } from './components/ChangePasswordSheet'
 import Navbar from './components/Navbar'
 import PageLoader from './components/PageLoader'
+import PushPrompt from './components/PushPrompt'
 import StatusBanner from './components/StatusBanner'
 import { TradeProvider } from './components/TradeSheet'
 import UpdatePrompt from './components/UpdatePrompt'
@@ -35,6 +36,20 @@ function ScrollToTop() {
   useEffect(() => {
     if (navType !== 'POP') window.scrollTo(0, 0)
   }, [pathname, navType])
+  return null
+}
+
+// Al tocar una notificación con la app abierta, el service worker avisa y se navega sin recargar.
+function PushNavigation() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined
+    const onMessage = (event) => {
+      if (event.data?.type === 'fm-navigate' && typeof event.data.url === 'string' && event.data.url.startsWith('/')) navigate(event.data.url)
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [navigate])
   return null
 }
 
@@ -77,6 +92,7 @@ function AppLayout() {
             <StatusBanner />
             <PasswordBanner />
             <ScrollToTop />
+            <PushNavigation />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
@@ -94,6 +110,7 @@ function AppLayout() {
           </main>
           <BottomNav />
           <CelebrationHost />
+          <PushPrompt />
           {tourReplay && <Tour mode="replay" onFinish={stopTourReplay} onSkip={stopTourReplay} />}
           <UpdatePrompt />
         </div>

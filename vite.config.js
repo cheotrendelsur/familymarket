@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       // 'prompt': la versión nueva espera hasta que el jugador toque "Actualizar" (ver src/lib/pwa.js).
       registerType: 'prompt',
-      includeAssets: ['icon-*.png'],
+      includeAssets: ['icon-*.png', 'push-sw.js'],
       manifest: {
         id: '/',
         name: 'FamilyMarket - Mercado de Predicciones',
@@ -30,6 +30,8 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // SPA: cualquier ruta navegable sirve index.html (también sin conexión).
         navigateFallback: '/index.html',
+        // Notificaciones push: el manejador de avisos vive en public/push-sw.js (ver src/lib/push.js).
+        importScripts: ['push-sw.js'],
         cleanupOutdatedCaches: true,
         // Sin skipWaiting: un despliegue nunca recarga la app en medio de una compra.
         // IMPORTANTE: no se cachea la API de Supabase. Con datos financieros en vivo

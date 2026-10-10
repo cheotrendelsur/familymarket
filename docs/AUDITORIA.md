@@ -341,3 +341,19 @@ dinero inicial, cuánto subió o bajó en el rango y tooltip con total / efectiv
 una compra de $50 mueve 1.2100¢ antes y 1.3889¢ después (×1.148); un grupo nuevo nace a 1/3 con profundidad 1739.13; el titular de la posición abierta más grande (651.56 acciones) puede venderla entera (cobra $401.50).
 Después de aplicarla en producción: los 2 mercados abiertos pasaron a profundidad 1739.13 con los mismos precios (66.99 % y 48.86 %), los 6 resueltos siguen en 2000.00, y los saldos y operaciones no cambiaron.
 **Si se quiere ajustar de nuevo:** `update public.game_settings set initial_liquidity = X where id;` solo afecta mercados NUEVOS; para uno ya abierto hay que escalar sus dos piscinas por el mismo factor (nunca una sola).
+
+
+# Fase 8 · Notificaciones push para Android y iPhone (octubre 2026, con el juego en marcha)
+
+**Pedido:** que a cada jugador le lleguen avisos (mercado nuevo, cierres, resultados…) en Android y en iPhone, gratis, y que a quien no los tenga activos le salga un aviso cada vez que abra la app hasta que los active.
+**Hecho:** ver «Notificaciones push» en el README (migración 026, función `send-push`, `push-sw.js`, `PushPrompt`, `NotificationsCard`).
+**Verificación:**
+- **Servidor real, sin dejar datos** (transacciones que se deshacen): racha de mercados nuevos que espera y se junta en un solo aviso («5 mercados nuevos» a quien ve los 5, en sus 2 teléfonos); a quien se le oculta un mercado
+  sorpresa NO le llega ni su pregunta; el creador no recibe lo suyo; «Última llamada» y «Apuestas cerradas» solo a quienes tienen acciones; «¡Ganaste +$X!» al resolver; «🎁 ¡Premio sorpresa!» con la apuesta oculta; sugerencia
+  aprobada sin duplicar el aviso de mercado nuevo; preferencias apagadas respetadas; programados avisan al abrir; no se repite ningún aviso; teléfonos muertos se borran y los fallos se cuentan.
+- **De punta a punta con un Chrome real:** el navegador se suscribió al servidor de Google (FCM), se guardó su suscripción, la base pidió a la función de borde un aviso de prueba, la función (VAPID + cifrado con `web-push` en Deno)
+  lo envió (HTTP 200, `sent: 1`) y el service worker lo MOSTRÓ en Chrome («🔔 ¡Funciona!»). Después se borró todo lo de la prueba.
+- **Interfaz:** `tests/push.test.jsx` (9: sale cada vez que se abre mientras no estén activas aunque diga «Ahora no», se activa y ya no vuelve a salir, bloqueado, iPhone sin instalar, iOS viejo con «No volver a mostrar»,
+  espera a la celebración, sin soporte no molesta, panel de Portafolio con 4 interruptores + prueba + desactivar) y capturas en iPhone SE 1.ª gen (320 px) y Pixel 8: sin desbordes ni errores.
+**Límite honesto:** no hay un iPhone físico aquí, así que la entrega en iPhone (servidor de Apple) no se probó; usa el mismo estándar y el mismo código que Android. Se sabe por reportes que en iOS algunas suscripciones se caen tras
+1-2 semanas: la app renueva la suscripción cada vez que se abre y vuelve a pedir el permiso si hace falta.

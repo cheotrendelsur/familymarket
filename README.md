@@ -157,7 +157,8 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…025). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…026).
+supabase/functions/    Función de borde `send-push` (envío de notificaciones push). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -181,6 +182,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 011 | El staff puede ver (y así borrar) objetos del bucket de fotos |
 | 012 | Tutorial: `profiles.tour_completed_at` + `complete_tour()` |
 | 013 | Liquidez inicial 1200 → 2000 (calibrada para 30-40 jugadores) |
+| 026 | **Notificaciones push** (Android y iPhone): suscripciones, preferencias, eventos, motor de mensajes `push_claim_jobs`, `pg_cron` cada minuto |
 | 025 | **+15 % de volatilidad**: liquidez inicial 2000 → 1739.13 y las piscinas de los mercados abiertos ÷ 1.15 (precio y patrimonios intactos) |
 | 014 | Mercados de varias opciones: arranque justo 1/N por opción (sin ganancia segura «No en todas») |
 | 015 | Lista de invitados + compuerta de registro (`invited_emails`, `enforce_invite`, RPC de gestión del dueño) |
@@ -247,3 +249,20 @@ quedara corto, Supabase Pro ($25/mes) elimina estos topes sin cambiar el código
 - **Auth → URL Configuration:** *Site URL* debe ser `https://familymarket-rho.vercel.app` (no `localhost`).
 - **PWA instalada antes de esta versión:** la primera vez puede pedir cerrar y volver a abrir; desde ahora avisa con un
   banner «Hay una versión nueva».
+
+
+## Notificaciones push (Android y iPhone)
+Gratis y sin servicios de terceros: Web Push estándar con claves VAPID propias, una función de borde de Supabase (`supabase/functions/send-push`) y `pg_cron`/`pg_net` en la base de datos.
+
+- **Quién las recibe:** cada jugador, en cada teléfono donde las active. En **Android** funcionan en Chrome (instalada o no). En **iPhone** hace falta **iOS 16.4 o más nuevo** y tener FamilyMarket **instalada en la pantalla de inicio**
+  (Safari → Compartir → «Agregar a pantalla de inicio»), abrirla desde ese ícono y tocar «Activar notificaciones» (Apple exige que el permiso lo pida un toque del jugador).
+- **Aviso para activarlas:** cada vez que se abre la app, quien no las tiene activas ve una hoja con «Activar notificaciones» / «Ahora no» (vuelve a salir la próxima vez que abra la app, o tras 30 min fuera). Si ya están activas no sale nunca más.
+  Si el permiso está bloqueado explica cómo desbloquearlo; en iPhone sin instalar muestra los 3 pasos; en iOS viejo se puede pedir «No volver a mostrar». No sale mientras hay una celebración o el tutorial.
+- **Qué avisos hay:** mercado nuevo (o programado que ya abrió) · apuestas cerradas · «última llamada» (15 min antes del cierre; solo a quienes tienen acciones) · resultado («¡Ganaste +$X!» / «Esta vez no fue») ·
+  premio sorpresa · resultado corregido / mercado anulado · sugerencia aprobada o rechazada. Cada jugador elige cuáles quiere en **Portafolio → Notificaciones** (y puede enviarse una prueba).
+- **Reglas:** nunca se avisa de un mercado sorpresa a quien se le ocultó; al creador no se le avisa de lo suyo; varios mercados nuevos seguidos (60 s sin nuevos, máx. 5 min) se juntan en **un solo aviso**;
+  no se manda por push lo que el jugador ya vio en la app; al tocar el aviso se abre el mercado.
+- **Cómo funciona:** triggers en `markets` y `notifications` + revisión por `pg_cron` anotan eventos en `push_events` (a prueba de fallos: jamás rompen crear/resolver un mercado); `push_nudge()` avisa a la función, que pide los
+  mensajes armados con `push_claim_jobs()` y los envía. Las claves VAPID y el secreto viven en `push_config` (sin acceso desde la API; la función genera las claves sola la primera vez; NO están en el repositorio).
+- **Mantenimiento:** si se quisieran rotar las claves, `update push_config set vapid_public = null, vapid_private = null;` y la próxima ejecución genera nuevas; los teléfonos se vuelven a suscribir solos al abrir la app.
+  Vista previa en modo demo: `/?mock=1&role=player&push=ask|denied|install|old|active`.
