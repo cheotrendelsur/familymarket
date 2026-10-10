@@ -79,6 +79,10 @@ registro de actividad del admin; "Nueva partida" con doble confirmación.
 
 ```sql
 -- 14 usuarios: lt_00 (admin) … lt_13. Sustituye <PASSWORD>.
+-- Desde la migración 015 hay que invitarlos primero (si no, la compuerta rechaza el alta):
+insert into public.invited_emails (email_key, email, password_ok, note)
+select 'lt_' || lpad(g::text, 2, '0') || '@loadtest.invalid', 'lt_' || lpad(g::text, 2, '0') || '@loadtest.invalid', true, 'prueba'
+from generate_series(0, 13) g;
 with ins as (
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
     raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
@@ -97,8 +101,16 @@ from ins;
 update public.profiles set username = 'lt_user_' || substr(email, 4, 2), is_admin = (email = 'lt_00@loadtest.invalid')
 where email like '%@loadtest.invalid';
 
--- Al terminar (cascada: perfiles, acciones, operaciones):
-delete from auth.users where email like '%@loadtest.invalid';
+-- Entre una ejecución y otra (la auditoría exige saldos 1000 y 0 movimientos del día):
+delete from public.markets; delete from public.transaction_logs; delete from public.notifications;
+delete from public.trade_requests; delete from public.admin_actions;
+update public.profiles set balance = 1000, tour_completed_at = null where email like '%@loadtest.invalid';
+
+-- Al terminar (cascada: perfiles, acciones, operaciones). Las pruebas de acceso (`loadtest.mjs access`) y de alta
+-- (`ui-onboarding`) también crean cuentas lt_acc_* / lt_signup_* / lt.acc…@gmail.com:
+delete from auth.users where email like '%@loadtest.invalid' or email like 'ltacc%+otra@gmail.com';
+delete from public.invited_emails where email like '%@loadtest.invalid' or email like 'lt.acc%@gmail.com';
+delete from public.networth_snapshots; select public._snapshot_networth(true);
 ```
 
 
@@ -138,3 +150,58 @@ delete from auth.users where email like '%@loadtest.invalid';
 - `sec` (35), `func` (57) y `conc` (17) actualizadas al nuevo esquema: todas en verde.
 - `npm run test:ui`: 3 recorridos E2E (jugador, dueño, alta) en verde.
 - Benchmark en la base: 1,35 ms por compra (150 compras seguidas), igual que antes de las funciones nuevas.
+
+
+---
+
+# Fase 3 · Tutorial por rol, calibración, auditoría de cálculos y acceso por invitación (octubre 2026)
+
+## Tutorial por rol
+Jugador: 7 misiones. Moderador: las mismas + misión de moderación (8). Dueño: no recibe tutorial automático (puede repetir el de jugador desde
+Portafolio). Prueba: `tests/ui-tour-roles.test.jsx` (modo demo, cubre los tres roles y recorre el del moderador completo).
+
+## Calibración de la liquidez (el «1200»)
+`scripts/calibrate.mjs` simula jugadores con creencias propias (ruidosas) con la MISMA matemática del servidor. Para 40 jugadores, 400 mercados por celda:
+
+| Liquidez L | Salto medio por operación | Salto p95 | Salto máximo | $100 mueve | 40 jugadores × $100 en «Sí» | Dinero que el mercado crea/destruye por mercado (p5 … p95) | Regalo máximo |
+|---|---|---|---|---|---|---|---|
+| 600 | 6.4 pp | 18.0 | 41.2 | ~7.5 pp | 98.3 % | −1.3 % … +0.4 % | $600 |
+| **1200 (antes)** | 3.1 pp | 8.5 | 22.6 | ~3.9 pp | 94.8 % | −1.8 % … +1.1 % | $1200 |
+| **2000 (ahora)** | **1.8 pp** | **5.1** | **12.4** | **~2.4 pp** | **89.8 %** | **−2.6 % … +2.0 %** | $2000 |
+| 3000 | 1.2 pp | 3.4 | 6.5 | ~1.6 pp | 84.2 % | −3.7 % … +3.2 % | $3000 |
+| 5000 | 0.7 pp | 2.1 | 4.0 | ~1.0 pp | 76.1 % | −5.8 % … +5.6 % | $5000 |
+
+Criterio: que una apuesta normal ($50–100) mueva el precio ~1–2.5 puntos (no ~4 como con 1200), que un consenso casi total de 40 jugadores llegue a ~90 %
+(todavía se expresa, sin chocar con el tope de 99 ¢) y que cada mercado cree o destruya poco dinero respecto de los $40,000 que circulan. Con L = 5000 el
+precio casi no se mueve (nadie llega a 80 %); con L = 600 es nervioso. **Se eligió 2000** (migración 013; solo afecta mercados NUEVOS, los
+existentes conservan sus piscinas). Para menos de ~15 jugadores conviene bajarlo a ~1200 (`update public.game_settings set initial_liquidity = 1200;`).
+Ida y vuelta (comprar y vender enseguida) cuesta solo las comisiones (≈ 3.96 %), no depende de L.
+
+## Auditoría de cálculos (`scripts/audit.mjs`)
+12 jugadores hacen ~450 compras y ventas aleatorias (de $0.01 a $400, ventas parciales y totales) contra el servidor real, con semilla reproducible.
+Resultado: **3374 verificaciones correctas, 0 fallos** (varias semillas). Lo que se comprueba:
+
+1. Paridad servidor ↔ frontend (acciones, comisión, precio medio, precio final, piscinas, saldo): error máximo de acciones 0 (±1e-6 permitido).
+2. Invariantes: k = yes·no constante (deriva 3e-13); acciones SÍ y NO conservadas; precio dentro de [1 ¢, 99 ¢]; sin ida-y-vuelta rentable.
+3. Libro contable: saldo = $1000 + ventas − compras (+ pagos) para cada jugador; movimientos diarios usados = operaciones hechas.
+4. Ranking: patrimonio = efectivo + Σ acciones × precio; orden y posiciones; costo promedio del portafolio recalculado de forma independiente.
+5. Resolución: $1.00 exacto por acción ganadora; avisos con ganancia = pago − invertido; estadísticas del perfil (aciertos, fallos, ganancia realizada);
+   identidad contable **Σ ganancia de jugadores = L − piscina_ganadora − comisiones**; el mercado nunca regala más que L.
+6. Deshacer resolución, volver a resolver y anular devuelven el dinero exacto; no se opera en mercados resueltos.
+7. Extremos: compra mínima ($0.01), tope de 99 ¢ (aceptado justo debajo, rechazado justo encima), venta que rompería 1 ¢, vender más de lo que se tiene,
+   `request_id` repetido cobra una sola vez.
+
+### Hallazgo corregido: mercados de varias opciones regalaban dinero (migración 014)
+Cada opción nacía al 50 %. En un mercado de N ≥ 3 opciones (gana UNA o ninguna) la suma de «Sí» era N/2 > 100 % y **comprar «No» en todas las opciones era
+ganancia segura** (costaba ~N/2 y pagaba al menos N−1), pagada por la liquidez inicial. Ahora cada opción nace con probabilidad 1/N (suma = 100 %), con el
+mismo k = L². Probado: suma de «Sí» = 100 % en grupos de 2, 3, 4 y 7 opciones, y el peor caso de «No en todas» paga menos de lo invertido.
+
+### Revisado sin hallazgos
+Orden de bloqueos (mercado → perfil → acciones: sin ciclos posibles), idempotencia, día de juego en hora de Venezuela (`America/Caracas`, sin horario de
+verano), redondeos (dinero a 4 decimales, acciones a 6: error máximo por operación < 1e-4), crecimiento de tablas con 40 jugadores (≈ 2,400 operaciones/día).
+
+## Acceso por invitación (migración 015)
+Ver README → «Cómo entra la gente». Pruebas: `loadtest.mjs access` (13 verificaciones contra el Auth real: desconocido rechazado, invitado «solo Google»
+rechazado con contraseña, con permiso de contraseña sí, Gmail con otros puntos reconocido, perfil nace con $1000 sin nombre ni permisos), seguridad
+(jugador normal no puede usar las RPC de invitaciones ni leer la tabla), `tests/ui-auth.test.jsx` (Google, error de «no invitado», aviso de visor interno,
+panel de invitaciones) y `tests/ui-onboarding.test.jsx` (alta real: rechazado sin invitación, aceptado tras invitar).

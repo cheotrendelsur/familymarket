@@ -732,59 +732,7 @@ export function StaffScene({ complete, setCoach }) {
   )
 }
 
-/* ------------------------------------------------------------------ 9. Dueño: moderadores */
-export const ownerCoach = (
-  <>
-    Y como <B>dueño</B> tú decides quién ayuda. Para nombrar a un <B>moderador</B>: <B>Admin → Gente</B> y enciende el interruptor junto a su nombre. Pruébalo con Tomi.
-  </>
-)
-
-export function OwnerScene({ complete, setCoach }) {
-  const [on, setOn] = useState({})
-  const people = [
-    ['Tomi', 'Tomas_christiansen'],
-    ['Mari', 'MariChris'],
-    ['Ricky', 'Ricky'],
-  ]
-  const toggle = (id, name) => {
-    const next = !on[id]
-    setOn((m) => ({ ...m, [id]: next }))
-    haptic(HAPTIC.tap)
-    if (next) {
-      setCoach(
-        <>
-          ¡Listo! <B>{name}</B> ya es moderador: puede crear y resolver mercados y revisar sugerencias. Para quitarlo, apaga el interruptor. Anular mercados, deshacer resoluciones, saldos y contraseñas siguen siendo solo tuyos.
-        </>
-      )
-      complete()
-    }
-  }
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-card divide-y divide-gray-100 overflow-hidden">
-      {people.map(([id, name], i) => (
-        <div key={id} className="flex items-center gap-3 px-4 py-3">
-          <Avatar name={name} size={38} />
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 truncate">{name}</p>
-            <p className="text-xs text-gray-500">{on[id] ? 'Moderador' : 'Jugador'}</p>
-          </div>
-          <Target active={i === 0 && !on[id]} rounded="rounded-full" hand={i === 0}>
-            <button
-              onClick={() => toggle(id, name)}
-              aria-pressed={!!on[id]}
-              aria-label={`Hacer moderador a ${id}`}
-              className={`w-12 h-7 flex items-center rounded-full p-0.5 transition-colors ${on[id] ? 'bg-polyblue' : 'bg-gray-300'}`}
-            >
-              <span className={`bg-white w-6 h-6 rounded-full shadow transition-transform ${on[id] ? 'translate-x-5' : ''}`} />
-            </button>
-          </Target>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ 10. Final */
+/* ------------------------------------------------------------------ 9. Final */
 export const finalCoach = (
   <>
     ¡Lo lograste! Ya sabes jugar. Estas son las <B>reglas de oro</B> para acordarte de todo:

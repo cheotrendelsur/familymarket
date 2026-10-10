@@ -69,6 +69,13 @@ export const avatarColor = (name) => {
 export function friendlyAuthError(error) {
   const msg = (error && (error.message || String(error))) || ''
   if (/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.'
+  // La base de datos solo deja crear cuentas a quien el dueño invitó (ver migración 015).
+  if (/Database error saving new user|EMAIL_NOT_INVITED|signups? not allowed/i.test(msg)) {
+    return 'Ese correo no está en la lista de la familia. Pídele a Cheche que lo agregue (dile exactamente qué correo usas).'
+  }
+  if (/PASSWORD_NOT_ALLOWED/i.test(msg)) return 'Ese correo debe entrar con Google. Toca «Continuar con Google».'
+  if (/EMAIL_DUPLICATE/i.test(msg)) return 'Ya hay una cuenta con ese correo. Entra con Google o con tu contraseña.'
+  if (/access_denied|cancel/i.test(msg)) return 'Cancelaste el inicio de sesión con Google. Puedes intentarlo otra vez.'
   if (/User already registered|already been registered/i.test(msg)) return 'Ese correo ya tiene una cuenta. Inicia sesión.'
   if (/Email not confirmed/i.test(msg)) return 'Debes confirmar tu correo antes de entrar. Revisa tu bandeja de entrada.'
   if (/rate limit|too many|over_request_rate_limit|over_email_send_rate_limit/i.test(msg)) {

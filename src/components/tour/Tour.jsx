@@ -8,7 +8,6 @@ import {
   FinalScene,
   MoveScene,
   NavScene,
-  OwnerScene,
   RankScene,
   ReadScene,
   RetryScene,
@@ -19,7 +18,6 @@ import {
   finalCoach,
   moveCoach,
   navCoach,
-  ownerCoach,
   rankCoach,
   readCoach,
   retryCoach,
@@ -28,7 +26,8 @@ import {
 } from './scenes'
 import { useSandbox } from './sandbox'
 
-function buildSteps({ isStaff, isOwner }) {
+// Tutorial de jugador; los moderadores tienen además su misión de moderación. El dueño no necesita un tutorial propio.
+function buildSteps({ isModerator }) {
   return [
     { id: 'welcome', Scene: WelcomeScene, coach: welcomeCoach, cta: '¡Empezar!' },
     { id: 'read', Scene: ReadScene, coach: readCoach, task: true, hint: 'Toca el botón «Sí» de la tarjeta' },
@@ -38,8 +37,7 @@ function buildSteps({ isStaff, isOwner }) {
     { id: 'close', Scene: CloseScene, coach: closeCoach, task: true, hint: 'Adelanta el reloj y resuelve el mercado' },
     { id: 'rank', Scene: RankScene, coach: rankCoach, task: true, hint: 'Toca a un jugador del ranking' },
     { id: 'nav', Scene: NavScene, coach: navCoach, task: true, hint: 'Toca 3 pestañas de la barra de abajo' },
-    ...(isStaff ? [{ id: 'staff', Scene: StaffScene, coach: staffCoach, task: true, hint: 'Publica la sugerencia y resuelve el mercado' }] : []),
-    ...(isOwner ? [{ id: 'owner', Scene: OwnerScene, coach: ownerCoach, task: true, hint: 'Enciende el interruptor de Tomi' }] : []),
+    ...(isModerator ? [{ id: 'staff', Scene: StaffScene, coach: staffCoach, task: true, hint: 'Publica la sugerencia y resuelve el mercado' }] : []),
     { id: 'final', Scene: FinalScene, coach: finalCoach, cta: '¡Empezar a jugar!' },
   ]
 }
@@ -59,9 +57,10 @@ function Backdrop() {
  * hacer cada operación. Se muestra una vez por jugador (mode "first") o a pedido (mode "replay").
  */
 export default function Tour({ mode = 'first', onFinish, onSkip }) {
-  const { isStaff, isOwner } = useAuth()
+  const { isModerator, isOwner } = useAuth()
   const sb = useSandbox()
-  const steps = useMemo(() => buildSteps({ isStaff, isOwner }), [isStaff, isOwner])
+  const showStaff = isModerator && !isOwner
+  const steps = useMemo(() => buildSteps({ isModerator: showStaff }), [showStaff])
   const [index, setIndex] = useState(0)
   const [doneMap, setDoneMap] = useState({})
   const [stars, setStars] = useState(0)

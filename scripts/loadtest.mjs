@@ -3,7 +3,7 @@
 //
 // Requiere usuarios de prueba (lt_00@... admin, lt_01..lt_13) creados aparte y un
 // archivo de credenciales fuera del repo:
-//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|feat|conc|all]
+//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|feat|access|conc|all]
 // testenv.json: { "password": "...", "prefix": "lt_", "domain": "loadtest.invalid", "count": 14 }
 // =====================================================================
 import { createClient } from '@supabase/supabase-js'
@@ -154,6 +154,10 @@ async function phaseSecurity(U, C) {
     ['admin_reset_password', { p_user_id: me.id, p_new_password: 'hacker123' }],
     ['admin_reopen_market', { p_market_id: fake }],
     ['admin_recent_actions', { p_limit: 5 }],
+    ['admin_list_invites', {}],
+    ['admin_invite_emails', { p_emails: ['intruso@example.com'], p_password_ok: true }],
+    ['admin_set_invite_password', { p_email: 'intruso@example.com', p_value: true }],
+    ['admin_remove_invite', { p_email: 'intruso@example.com' }],
     ['admin_archive_and_reset', { p_title: 'x', p_slug: 'abc-123' }],
   ]
   for (const [fn, args] of tests) {
@@ -172,6 +176,8 @@ async function phaseSecurity(U, C) {
   check('NO puede insertar mercados', !!w4.error)
   const w5 = await c.from('markets').update({ closed: true }).eq('id', fake)
   check('NO puede cerrar mercados', !!w5.error || true)
+  const inv = await c.from('invited_emails').select('*')
+  check('no puede leer la lista de invitados', !!inv.error || (inv.data?.length ?? 0) === 0)
   const aa = await c.from('admin_actions').select('*')
   check('no puede leer la tabla de auditoría', !!aa.error || (aa.data?.length ?? 0) === 0)
   const gs = await c.from('game_settings').select('*')
@@ -209,7 +215,8 @@ async function phaseFunctional(U, C) {
   check('admin crea mercado', !created.error && typeof created.data === 'string', msg(created))
   const A = created.data
   const mA = await getMarket(admin, A)
-  check('mercado nuevo con liquidez 1200/1200', Number(mA.yes_pool) === 1200 && Number(mA.no_pool) === 1200)
+  const L0 = Number((await admin.from('game_settings').select('initial_liquidity').single()).data.initial_liquidity)
+  check(`mercado nuevo con la liquidez configurada (${L0}/${L0})`, Number(mA.yes_pool) === L0 && Number(mA.no_pool) === L0)
   const hist0 = await admin.rpc('get_market_history', { p_market_id: A, p_limit: 50 })
   check('historial inicial tiene 1 punto a 50¢', hist0.data?.length === 1 && near(Number(hist0.data[0].yes_price), 0.5))
 
@@ -226,6 +233,7 @@ async function phaseFunctional(U, C) {
 
   // --- compra con paridad ---
   const cfgGame = { ...DEFAULT_CONFIG }
+  const Lk = Number((await admin.from('game_settings').select('initial_liquidity').single()).data.initial_liquidity)
   const q = quoteBuy(mA, 'YES', 100, cfgGame)
   const req = newRequestId()
   const buy = await call(p1, 'buy_shares', { p_market_id: A, p_side: 'YES', p_investment: 100, p_max_price: q.avgPrice * 1.03, p_request_id: req })
@@ -237,7 +245,7 @@ async function phaseFunctional(U, C) {
   check('saldo = 900', near(buy.data.new_balance, 900, 1e-6) && near(await getBalance(p1, id1), 900, 1e-6))
   check('movimientos restantes = 59', buy.data.daily_moves_remaining === 59)
   const m1 = await getMarket(admin, A)
-  check('producto de piscinas (k) se conserva', Math.abs(Number(m1.yes_pool) * Number(m1.no_pool) - 1200 * 1200) / (1200 * 1200) < 1e-9)
+  check('producto de piscinas (k) se conserva', Math.abs(Number(m1.yes_pool) * Number(m1.no_pool) - L0 * L0) / (L0 * L0) < 1e-9)
   const sh1 = await getShares(p1, A)
   check('acciones guardadas = acciones reportadas', near(sh1.YES, buy.data.shares_bought, 1e-9))
 
@@ -264,7 +272,7 @@ async function phaseFunctional(U, C) {
   check('paridad venta: precio final', near(sell.data.final_price, qs.finalPrice, 1e-9))
   check('saldo tras vender = 900 + pago', near(await getBalance(p1, id1), 900 + sell.data.payout, 1e-3))
   const m4 = await getMarket(admin, A)
-  check('k se conserva tras vender', Math.abs(Number(m4.yes_pool) * Number(m4.no_pool) - 1200 * 1200) / (1200 * 1200) < 1e-8)
+  check('k se conserva tras vender', Math.abs(Number(m4.yes_pool) * Number(m4.no_pool) - L0 * L0) / (L0 * L0) < 1e-8)
 
   // --- errores de negocio ---
   const tooMuch = await call(p1, 'sell_shares', { p_market_id: A, p_side: 'YES', p_shares_to_sell: 1e6 })
@@ -349,6 +357,7 @@ async function phaseFunctional(U, C) {
 async function phaseConcurrency(U, C) {
   const admin = C[0]
   const cfgGame = { ...DEFAULT_CONFIG }
+  const Lk = Number((await admin.from('game_settings').select('initial_liquidity').single()).data.initial_liquidity)
 
   // ---------- 3a: estampida de 10 jugadores × 15 compras simultáneas ----------
   section('CONCURRENCIA 1 · estampida: 10 jugadores × 15 compras simultáneas en UN mercado')
@@ -393,7 +402,7 @@ async function phaseConcurrency(U, C) {
   const yes = Number(mC.yes_pool)
   const no = Number(mC.no_pool)
   check('INVARIANTE tokens: YES(pool)+ΣYES == NO(pool)+ΣNO', near(yes + sumYes, no + sumNo, 1e-3), `${yes + sumYes} vs ${no + sumNo}`)
-  check('INVARIANTE k constante tras 150 operaciones simultáneas', Math.abs(yes * no - 1200 * 1200) / (1200 * 1200) < 1e-8, `k=${yes * no}`)
+  check('INVARIANTE k constante tras 150 operaciones simultáneas', Math.abs(yes * no - Lk * Lk) / (Lk * Lk) < 1e-8, `k=${yes * no}`)
   let allBalOk = true
   let allDailyOk = true
   for (const i of players) {
@@ -737,6 +746,69 @@ async function phaseFeatures(U, C) {
   check('el dueño quita el permiso de moderador y se pierde el acceso', !!afterRole.error, msg(afterRole))
 }
 
+
+// =====================================================================
+async function phaseAccess(U, C) {
+  section('ACCESO · solo entran los invitados (compuerta en la base de datos)')
+  const admin = C[0]
+  const anon = () => createClient(URL_, KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+  const tag = Math.random().toString(16).slice(2, 8)
+  const mail = (name) => `lt_acc_${name}_${tag}@${cfg.domain}`
+  const pw = cfg.password
+
+  // 1) desconocido: no puede crear cuenta
+  const stranger = mail('extrano')
+  const s1 = await anon().auth.signUp({ email: stranger, password: pw })
+  check('un correo que no está en la lista NO puede crear cuenta', !!s1.error && !s1.data?.session, s1.error?.message)
+  const s1b = await anon().auth.signInWithPassword({ email: stranger, password: pw })
+  check('y tampoco existe para iniciar sesión', !!s1b.error)
+
+  // 2) invitado solo-Google: no puede crear cuenta con contraseña
+  const googleOnly = mail('google')
+  const inv1 = await call(admin, 'admin_invite_emails', { p_emails: [googleOnly, 'esto no es un correo'], p_password_ok: false })
+  check('el dueño invita (y se rechaza lo que no es correo)', !inv1.error && inv1.data?.added === 1 && inv1.data?.invalid?.length === 1, msg(inv1))
+  const s2 = await anon().auth.signUp({ email: googleOnly, password: pw })
+  check('invitado «solo Google» no puede crear cuenta con contraseña', !!s2.error && !s2.data?.session, s2.error?.message)
+
+  // 3) mismo invitado, ahora con permiso de contraseña: puede
+  const set = await call(admin, 'admin_set_invite_password', { p_email: googleOnly, p_value: true })
+  check('el dueño le permite contraseña', !set.error, msg(set))
+  const s3 = await anon().auth.signUp({ email: googleOnly, password: pw })
+  check('con permiso de contraseña SÍ puede crear cuenta', !s3.error && !!s3.data?.session, s3.error?.message)
+  if (s3.data?.session) {
+    const me = mk(s3.data.session.access_token)
+    const prof = await me.from('profiles').select('balance, username, is_admin, is_moderator, tour_completed_at').single()
+    check(
+      'su perfil nace con $1000, sin nombre, sin permisos y sin tutorial visto',
+      Number(prof.data?.balance) === 1000 && prof.data?.username === null && !prof.data?.is_admin && !prof.data?.is_moderator && prof.data?.tour_completed_at === null
+    )
+    const dup = await anon().auth.signUp({ email: googleOnly.toUpperCase(), password: pw })
+    check('no se puede crear una segunda cuenta con el mismo correo', !!dup.error || !dup.data?.session)
+  }
+
+  // 4) quitar invitación: con cuenta no se puede; sin cuenta sí
+  const rem1 = await call(admin, 'admin_remove_invite', { p_email: googleOnly })
+  check('no se puede quitar la invitación de quien ya tiene cuenta', !!rem1.error, msg(rem1))
+  const pend = mail('pendiente')
+  await call(admin, 'admin_invite_emails', { p_emails: [pend] })
+  const list = await call(admin, 'admin_list_invites')
+  check(
+    'la lista muestra quién ya entró y quién espera',
+    list.data?.some((i) => i.email === googleOnly && i.joined === true) && list.data?.some((i) => i.email === pend && i.joined === false),
+    msg(list)
+  )
+  const rem2 = await call(admin, 'admin_remove_invite', { p_email: pend })
+  check('se puede quitar una invitación pendiente', !rem2.error, msg(rem2))
+  const s4 = await anon().auth.signUp({ email: pend, password: pw })
+  check('y esa persona ya no puede crear cuenta', !!s4.error && !s4.data?.session)
+
+  // 5) Gmail: puntos y «+etiqueta» no crean cuentas distintas
+  const base = `lt.acc${tag}`
+  await call(admin, 'admin_invite_emails', { p_emails: [`${base}@gmail.com`], p_password_ok: true })
+  const g1 = await anon().auth.signUp({ email: `${base.replace('.', '')}+otra@gmail.com`, password: pw })
+  check('un Gmail escrito con otros puntos / +etiqueta se reconoce como el mismo invitado', !g1.error && !!g1.data?.session, g1.error?.message)
+}
+
 // =====================================================================
 async function cleanupMarkets(admin) {
   const { data } = await admin.from('markets').select('id, question').like('question', '[TEST]%')
@@ -761,6 +833,7 @@ try {
     await phaseFeatures(U, C)
     await cleanupMarkets(C[0])
   }
+  if (PHASE === 'access' || PHASE === 'all') await phaseAccess(U, C)
   if (PHASE === 'conc' || PHASE === 'all') await phaseConcurrency(U, C)
 } finally {
   if (PHASE !== 'keep') {

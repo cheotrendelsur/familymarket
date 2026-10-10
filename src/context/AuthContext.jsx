@@ -132,6 +132,7 @@ export function AuthProvider({ children }) {
     return result
   }, [])
 
+  const signInWithGoogle = useCallback(() => auth.signInWithGoogle(), [])
   const signOut = useCallback(() => auth.signOut(), [])
 
   const refreshProfile = useCallback(() => {
@@ -162,7 +163,8 @@ export function AuthProvider({ children }) {
       loading,
       profileError,
       needsUsername: !!profile && !profile.username,
-      needsTour: !!profile && !!profile.username && !profile.tour_completed_at && !tourLocal,
+      // El dueño no necesita tutorial (puede repetirlo desde Portafolio si quiere).
+      needsTour: !!profile && !!profile.username && !profile.is_admin && !profile.tour_completed_at && !tourLocal,
       completeTour,
       tourReplay,
       startTourReplay: () => setTourReplay(true),
@@ -172,12 +174,13 @@ export function AuthProvider({ children }) {
       isStaff: !!profile?.is_admin || !!profile?.is_moderator,
       signUp,
       signIn,
+      signInWithGoogle,
       signOut,
       refreshProfile,
       retryProfile,
       applyBalance,
     }),
-    [user, profile, loading, profileError, tourLocal, tourReplay, completeTour, signUp, signIn, signOut, refreshProfile, retryProfile, applyBalance]
+    [user, profile, loading, profileError, tourLocal, tourReplay, completeTour, signUp, signIn, signInWithGoogle, signOut, refreshProfile, retryProfile, applyBalance]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -32,6 +32,10 @@ const players = NAMES.map((username, i) => ({
 }))
 const me = players[0]
 const byId = (id) => players.find((p) => p.id === id)
+const invites = [
+  { email: 'abuela.rosa@gmail.com', password_ok: false, note: null, created_at: iso(now() - hour(5)), username: null, joined: false },
+  { email: 'primo.luis@hotmail.com', password_ok: true, note: null, created_at: iso(now() - hour(3)), username: null, joined: false },
+]
 
 const svg = (a, b, emoji) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -508,6 +512,38 @@ const handlers = {
   async admin_list_players() {
     return players.map((p) => ({ ...p }))
   },
+  async admin_list_invites() {
+    return [
+      ...players.map((p, i) => ({ email: `${p.username.toLowerCase()}@gmail.com`, password_ok: i % 3 === 0, note: null, created_at: iso(now() - hour(24 * 30)), username: p.username, joined: true })),
+      ...invites,
+    ]
+  },
+  async admin_invite_emails({ p_emails, p_password_ok }) {
+    let added = 0
+    let already = 0
+    const invalid = []
+    for (const raw of p_emails) {
+      const email = String(raw || '').trim().toLowerCase()
+      if (!email) continue
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) invalid.push(email)
+      else if (invites.some((x) => x.email === email)) already += 1
+      else {
+        invites.unshift({ email, password_ok: !!p_password_ok, note: null, created_at: iso(now()), username: null, joined: false })
+        added += 1
+      }
+    }
+    return { added, already, invalid }
+  },
+  async admin_set_invite_password({ p_email, p_value }) {
+    const x = invites.find((i) => i.email === p_email)
+    if (x) x.password_ok = p_value
+    return { success: true }
+  },
+  async admin_remove_invite({ p_email }) {
+    const i = invites.findIndex((x) => x.email === p_email)
+    if (i >= 0) invites.splice(i, 1)
+    return { success: true }
+  },
   async admin_set_moderator({ p_user_id, p_value }) {
     byId(p_user_id).is_moderator = p_value
     return { success: true }
@@ -630,7 +666,8 @@ export const db = {
   },
 }
 
-let session = { user: { id: 'me', email: 'cheche@familia.test' } }
+let session =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('signedout') ? null : { user: { id: 'me', email: 'cheche@familia.test' } }
 const listeners = new Set()
 export const auth = {
   async getSession() {
@@ -647,6 +684,9 @@ export const auth = {
     return { data: { session }, error: null }
   },
   async signUp() {
+    return auth.signIn()
+  },
+  async signInWithGoogle() {
     return auth.signIn()
   },
   async signOut() {

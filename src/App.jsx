@@ -56,10 +56,12 @@ function ProfileProblem() {
 }
 
 function AppLayout() {
+  const location = useLocation()
   const { user, profile, loading, profileError, needsUsername, needsTour, completeTour, tourReplay, stopTourReplay, refreshProfile } = useAuth()
 
   if (loading) return <PageLoader label="Cargando FamilyMarket..." fullScreen />
-  if (!user) return <Navigate to="/auth" replace />
+  // Se conserva ?error=... por si venimos de un inicio de sesión con Google que falló.
+  if (!user) return <Navigate to={{ pathname: '/auth', search: location.search, hash: location.hash }} replace />
   if (profileError || !profile) return <ProfileProblem />
   if (needsUsername) return <UsernameSetup onComplete={refreshProfile} />
   // Primera vez: el tutorial reemplaza a la app (no toca datos reales) hasta completarlo o saltarlo.

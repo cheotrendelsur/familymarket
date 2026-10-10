@@ -11,8 +11,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    // No usamos OAuth ni magic links: evita trabajo extra al cargar.
-    detectSessionInUrl: false,
+    // Inicio de sesión con Google (OAuth con PKCE): al volver de Google llega ?code=... y el cliente lo canjea solo.
+    detectSessionInUrl: true,
+    flowType: 'pkce',
   },
   // La app actualiza por sondeo (polling) y no por Realtime: así el costo por
   // usuario es constante y no hay límites de conexiones simultáneas que alcanzar.

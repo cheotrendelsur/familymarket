@@ -13,13 +13,13 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | Regla | Valor |
 |---|---|
 | Saldo inicial | $1,000 |
-| Liquidez inicial de cada mercado | 1200 YES / 1200 NO (precio inicial 50¢) |
+| Liquidez inicial de cada mercado | 2000 YES / 2000 NO (precio inicial 50¢; calibrada para 30-40 jugadores, ver `docs/AUDITORIA.md` fase 3) |
 | Comisión (fee) | 2 % en cada compra y venta |
 | Límite de movimientos | 60 por día (el día cambia a medianoche **hora de Venezuela**) |
 | Precio mínimo / máximo | 1¢ – 99¢ |
 | Pago al resolver | $1.00 por acción ganadora |
 | Tolerancia de precio | 5 % por defecto (ajustable); si otro jugador mueve el precio, un toque reintenta al precio nuevo |
-| Mercados múltiples | Varias opciones bajo un mismo tema (se crean juntas, de forma atómica; comparten foto y cierre) |
+| Mercados múltiples | Varias opciones bajo un mismo tema (se crean juntas, de forma atómica; comparten foto y cierre). Solo puede ganar UNA opción: cada una nace con probabilidad **1/N** (la suma es 100 %) |
 | Cierre por fecha | Un mercado puede tener hora de cierre: cuenta regresiva, apuestas bloqueadas en el servidor y estado «esperando resultado» |
 | Filtro fantasma | Se puede **ocultar** un mercado a ciertos jugadores (sorpresas); se aplica en el servidor también al feed y a los perfiles |
 | Fotos | Cámara o galería; se recortan y comprimen en el celular (WebP, JPEG en Safari) antes de subirse al bucket público `market-images` |
@@ -41,13 +41,36 @@ El dueño nombra moderadores desde **Admin → Gente** (un interruptor en la fil
 La primera vez que un jugador entra (ya con su nombre elegido) ve un tutorial tipo juego, con la mascota **Fami** 🦊 y estrellas:
 **no se puede avanzar sin hacer cada operación** en un mercado de práctica (dinero de mentira, la misma matemática que el juego real):
 leer un mercado, comprar, ver cómo el precio se mueve y vender, «Reintentar al nuevo precio», cierre de apuestas y resolución (con la pantalla
-de victoria y confeti), ranking y perfiles, y moverse por la barra de abajo. Los moderadores y el dueño reciben misiones extra
-(publicar una sugerencia, resolver un mercado y, solo el dueño, **nombrar moderadores**).
+de victoria y confeti), ranking y perfiles, y moverse por la barra de abajo (7 misiones).
 
+- **Según el rol:** el **jugador** ve el tutorial de jugador; el **moderador** ve ese mismo + una misión extra de moderación (publicar una
+  sugerencia y resolver un mercado, 8 misiones); el **dueño** no recibe tutorial (sabe operar el panel). Los moderadores se nombran a mano
+  antes de empezar, así que el tutorial de cada quien ya sale con su rol.
 - El «ya lo vio» se guarda en el servidor (`profiles.tour_completed_at`, RPC `complete_tour`, migración 012): vale en cualquier celular y no se repite.
 - Se puede volver a ver en **Portafolio → Preferencias → «Ver el tutorial otra vez»** (en ese modo no cambia nada del servidor).
-- Para previsualizarlo sin tocar datos: `npm run dev` y `http://localhost:5173/?mock=1&role=owner&tour=1` (`role=player` para la versión de jugador).
+- Para previsualizarlo sin tocar datos: `npm run dev` y `http://localhost:5173/?mock=1&role=player&tour=1` (`role=mod` para el de moderador).
 - Código: `src/components/tour/` (`Tour.jsx` motor, `scenes.jsx` misiones, `sandbox.js` mercado de práctica, `Mini.jsx` piezas de interfaz).
+
+### Cómo entra la gente (cuentas)
+
+Nadie puede crear una cuenta por su cuenta: **solo entran los correos que el dueño invitó** (Admin → Gente → «Invitar jugadores»).
+La compuerta está en la base de datos (migración 015, disparador `enforce_invite` sobre `auth.users`), así que un desconocido no llega ni a
+tener sesión.
+
+1. El dueño pega los correos (uno por línea) en **Admin → Gente → Invitar jugadores** y copia el mensaje de invitación para WhatsApp.
+2. La persona abre el enlace **en Safari (iPhone) o Chrome (Android)** —no desde dentro de WhatsApp/Instagram— y toca **«Continuar con Google»**.
+3. Elige su nombre de jugador y hace el tutorial de 2 minutos.
+
+- **Google es la vía normal** (gratis, sin contraseñas ni correos de confirmación; el correo lo verifica Google, así nadie puede «robar» un lugar).
+- **Correo + contraseña** queda solo para: los 9 jugadores que ya existían, y para quien el dueño marque «con contraseña» (llave 🔑 en su invitación).
+- Gmail ignora los puntos y lo que va tras «+»: `juan.perez@gmail.com` = `juanperez@gmail.com` (se compara normalizado, no se duplican cuentas).
+- Si Google no está activado todavía en Supabase, la pantalla de acceso muestra solo correo y contraseña (se detecta sola vía `/auth/v1/settings`).
+- Quitar una invitación no saca a quien ya tiene cuenta.
+
+**Activar Google (una sola vez, ~10 min, gratis):** Google Cloud Console → crear proyecto → «Pantalla de consentimiento de OAuth» (Externo, nombre
+FamilyMarket, tu correo; **publicar la app** para que no quede limitada a 100 usuarios de prueba) → «Credenciales» → «ID de cliente de OAuth» tipo *Aplicación web* →
+en «URI de redireccionamiento autorizados» pegar `https://tbxwqxuandxibpwoshuc.supabase.co/auth/v1/callback` → copiar *ID de cliente* y *Secreto*. En Supabase:
+Authentication → Providers → Google → activar y pegar ambos. Authentication → URL Configuration → *Site URL* = `https://familymarket-rho.vercel.app`.
 
 ### Panel de administración (dueño y moderadores)
 
@@ -114,8 +137,8 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…012). Aplicar en orden en el SQL Editor.
-scripts/              loadtest.mjs (seguridad+lógica+concurrencia), latency.mjs, throughput.mjs
+supabase/migrations/  Esquema completo versionado (001…015). Aplicar en orden en el SQL Editor.
+scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
 docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados y corregidos
@@ -137,6 +160,9 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 010 | Editar la descripción de un mercado múltiple la cambia en todas sus opciones |
 | 011 | El staff puede ver (y así borrar) objetos del bucket de fotos |
 | 012 | Tutorial: `profiles.tour_completed_at` + `complete_tour()` |
+| 013 | Liquidez inicial 1200 → 2000 (calibrada para 30-40 jugadores) |
+| 014 | Mercados de varias opciones: arranque justo 1/N por opción (sin ganancia segura «No en todas») |
+| 015 | Lista de invitados + compuerta de registro (`invited_emails`, `enforce_invite`, RPC de gestión del dueño) |
 
 ## Desarrollo
 

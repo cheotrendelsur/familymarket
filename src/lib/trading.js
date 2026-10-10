@@ -8,7 +8,7 @@
 export const DEFAULT_CONFIG = {
   daily_limit: 60,
   fee_rate: 0.02,
-  initial_liquidity: 1200,
+  initial_liquidity: 2000,
   initial_balance: 1000,
   min_price: 0.01,
   max_price: 0.99,

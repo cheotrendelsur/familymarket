@@ -142,6 +142,33 @@ export const auth = {
     if (mockPromise) return (await mockPromise).auth.signUp(email, password)
     return supabase.auth.signUp({ email, password })
   },
+  /** Redirige a Google; al volver, Supabase deja la sesión lista (ver supabaseClient.js). */
+  async signInWithGoogle() {
+    if (mockPromise) return (await mockPromise).auth.signInWithGoogle()
+    return supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/`, queryParams: { prompt: 'select_account' } },
+    })
+  },
+  /** ¿Está activado «Entrar con Google» en Supabase? Si no, la pantalla solo ofrece correo y contraseña. */
+  async googleEnabled() {
+    if (mockPromise) return true
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 6000)
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/settings`, {
+        headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+        signal: controller.signal,
+      })
+      if (!res.ok) return false
+      const settings = await res.json()
+      return !!settings?.external?.google
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  },
   async signOut() {
     if (mockPromise) return (await mockPromise).auth.signOut()
     return supabase.auth.signOut()

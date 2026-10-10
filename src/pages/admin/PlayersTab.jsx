@@ -8,6 +8,7 @@ import { useConfirm } from '../../components/ConfirmDialog'
 import { Avatar } from '../../components/Leaderboard'
 import Sheet from '../../components/ui/Sheet'
 import { Field, Notice, inputClass } from './adminUi'
+import InvitesCard from './InvitesCard'
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/
 
@@ -176,6 +177,8 @@ export default function PlayersTab() {
 
   return (
     <div className="space-y-4">
+      <InvitesCard />
+
       <Notice>
         <span className="block font-semibold">Moderadores</span>
         Pueden crear y resolver mercados, revisar sugerencias y ver el registro de actividad. Anular mercados, deshacer resoluciones, saldos y

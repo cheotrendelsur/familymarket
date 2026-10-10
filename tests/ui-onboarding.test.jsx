@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createClient } from '@supabase/supabase-js'
-import { creds, goto } from './helpers'
+import { apiClient, creds, goto } from './helpers'
 import { consoleErrors } from './setup'
 
 const T = { timeout: 45000 }
@@ -19,16 +19,33 @@ describe('Alta de jugador nuevo', () => {
     const { default: App } = await import('../src/App.jsx')
     render(<App />)
 
-    // ---- registro ----
-    expect(await screen.findByText('Iniciar sesión', { selector: 'h2' }, T)).toBeTruthy()
-    fireEvent.click(screen.getByText('¿No tienes cuenta? Regístrate'))
+    // ---- registro: solo con invitación del dueño ----
+    // (si algún día se activa «Entrar con Google», el formulario de correo queda tras «Usar correo y contraseña»)
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Cargando' })).toBeNull(), T)
+    const useEmail = screen.queryByRole('button', { name: /Usar correo y contraseña/ })
+    if (useEmail) fireEvent.click(useEmail)
+    fireEvent.click(await screen.findByText('¿No tienes cuenta? Regístrate', {}, T))
     expect(screen.getByText('Crear cuenta', { selector: 'h2' })).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: email } })
-    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: c.password } })
-    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
-    expect(await screen.findByText('Crear cuenta nueva')).toBeTruthy() // confirmación del correo
-    fireEvent.click(screen.getByRole('button', { name: 'Sí, crear cuenta' }))
+    const fillAndSubmit = async (mail) => {
+      fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: mail } })
+      fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: c.password } })
+      fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+      expect(await screen.findByText('Crear cuenta nueva')).toBeTruthy() // confirmación del correo
+      fireEvent.click(screen.getByRole('button', { name: 'Sí, crear cuenta' }))
+    }
+
+    // 1) un desconocido (no está en la lista) NO puede crear cuenta
+    await fillAndSubmit(`lt_noinv_${suffix}@${c.domain}`)
+    expect(await screen.findByText(/no está en la lista de la familia/, {}, T)).toBeTruthy()
+    expect(screen.queryByText('¡Bienvenido a FamilyMarket!')).toBeNull()
+
+    // 2) el dueño lo invita (con contraseña) y entonces sí puede
+    const owner = (await apiClient(0)).client
+    const invited = await owner.rpc('admin_invite_emails', { p_emails: [email], p_password_ok: true })
+    expect(invited.error).toBeNull()
+    expect(invited.data.added).toBe(1)
+    await fillAndSubmit(email)
 
     // ---- elegir nombre ----
     expect(await screen.findByText('¡Bienvenido a FamilyMarket!', {}, T)).toBeTruthy()
