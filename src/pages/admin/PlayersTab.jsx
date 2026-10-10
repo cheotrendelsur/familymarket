@@ -7,8 +7,9 @@ import { friendlyError, money } from '../../lib/format'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Avatar } from '../../components/Leaderboard'
 import Sheet from '../../components/ui/Sheet'
-import { Field, Notice, inputClass } from './adminUi'
+import { Disclosure, Field, Notice, inputClass } from './adminUi'
 import InvitesCard from './InvitesCard'
+import SignupCard from './SignupCard'
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/
 
@@ -177,7 +178,11 @@ export default function PlayersTab() {
 
   return (
     <div className="space-y-4">
-      <InvitesCard />
+      <SignupCard />
+
+      <Disclosure title="Invitar por correo (opcional)" hint="Solo si alguien prefiere entrar con Google o con su correo">
+        <InvitesCard />
+      </Disclosure>
 
       <Notice>
         <span className="block font-semibold">Moderadores</span>

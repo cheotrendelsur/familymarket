@@ -53,24 +53,23 @@ de victoria y confeti), ranking y perfiles, y moverse por la barra de abajo (7 m
 
 ### Cómo entra la gente (cuentas)
 
-Nadie puede crear una cuenta por su cuenta: **solo entran los correos que el dueño invitó** (Admin → Gente → «Invitar jugadores»).
-La compuerta está en la base de datos (migración 015, disparador `enforce_invite` sobre `auth.users`), así que un desconocido no llega ni a
-tener sesión.
+Todo se hace desde el celular, sin correos, sin Google y sin pedirle datos a nadie:
 
-1. El dueño pega los correos (uno por línea) en **Admin → Gente → Invitar jugadores** y copia el mensaje de invitación para WhatsApp.
-2. La persona abre el enlace **en Safari (iPhone) o Chrome (Android)** —no desde dentro de WhatsApp/Instagram— y toca **«Continuar con Google»**.
-3. Elige su nombre de jugador y hace el tutorial de 2 minutos.
+1. El dueño abre **Admin → Gente → «Registro de jugadores»**, toca **«Copiar invitación para WhatsApp»** y la pega en el grupo. El mensaje lleva un enlace con el
+   **código de la familia** ya puesto.
+2. Cada persona abre el enlace (en cualquier navegador, también dentro de WhatsApp), elige su **nombre de jugador** y una **contraseña** y entra de una (pestaña «Soy nuevo»).
+   Luego hace el tutorial de 2 minutos.
+3. Después entra con **su nombre de usuario y contraseña** (pestaña «Entrar»). Los 9 jugadores anteriores siguen entrando con su correo (el campo acepta usuario o correo).
 
-- **Google es la vía normal** (gratis, sin contraseñas ni correos de confirmación; el correo lo verifica Google, así nadie puede «robar» un lugar).
-- **Correo + contraseña** queda solo para: los 9 jugadores que ya existían, y para quien el dueño marque «con contraseña» (llave 🔑 en su invitación).
-- Gmail ignora los puntos y lo que va tras «+»: `juan.perez@gmail.com` = `juanperez@gmail.com` (se compara normalizado, no se duplican cuentas).
-- Si Google no está activado todavía en Supabase, la pantalla de acceso muestra solo correo y contraseña (se detecta sola vía `/auth/v1/settings`).
-- Quitar una invitación no saca a quien ya tiene cuenta.
-
-**Activar Google (una sola vez, ~10 min, gratis):** Google Cloud Console → crear proyecto → «Pantalla de consentimiento de OAuth» (Externo, nombre
-FamilyMarket, tu correo; **publicar la app** para que no quede limitada a 100 usuarios de prueba) → «Credenciales» → «ID de cliente de OAuth» tipo *Aplicación web* →
-en «URI de redireccionamiento autorizados» pegar `https://tbxwqxuandxibpwoshuc.supabase.co/auth/v1/callback` → copiar *ID de cliente* y *Secreto*. En Supabase:
-Authentication → Providers → Google → activar y pegar ambos. Authentication → URL Configuration → *Site URL* = `https://familymarket-rho.vercel.app`.
+- **Por dentro:** cada cuenta nueva usa un correo interno inventado (`nombre@jugador.familymarket.invalid`): no se manda ningún correo, así que nada cae en spam ni cuesta dinero.
+- **Seguridad:** la compuerta está en la base de datos (disparador `enforce_invite` sobre `auth.users`, migraciones 015/018): sin el código correcto no se crea ni el usuario.
+  El código tiene 8 caracteres sin letras confusas (~850 mil millones de combinaciones) y más de 200 intentos fallidos en 10 minutos bloquean el registro un rato.
+- **Control del dueño** (misma tarjeta): ver/copiar el código, **cerrar el registro** cuando ya entraron todos (nadie nuevo entra ni con el código), **cambiar el código**
+  (el anterior deja de servir; las cuentas existentes no se afectan) y poner un **máximo de jugadores** (por defecto 60).
+- **Contraseña olvidada:** no hay correo para recuperarla; el dueño la restablece en Admin → Gente → (jugador) → «Contraseña».
+- **Opcional:** «Invitar por correo» (plegado en Gente) sigue existiendo para quien prefiera entrar con Google o con su correo; Google funciona solo si se activa en Supabase
+  (la pantalla lo detecta sola y muestra el botón).
+- Nombres: de 3 a 20 letras, números o guion bajo, únicos sin importar mayúsculas (se avisa en vivo si el nombre está libre).
 
 ### Panel de administración (dueño y moderadores)
 
@@ -137,7 +136,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…017). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…019). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -165,6 +164,8 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 015 | Lista de invitados + compuerta de registro (`invited_emails`, `enforce_invite`, RPC de gestión del dueño) |
 | 016 | Un moderador solo cierra, edita y resuelve los mercados que él creó (`resolve_market`, `staff_update_market`) |
 | 017 | Horas guardadas según el orden real de ejecución (`clock_timestamp()` en operaciones, historial de precios y `resolved_at`) |
+| 018 | **Registro con código de la familia** (`signup_config`, `check_signup_code`, `username_available`, `signup_status`, gestión del dueño) y compuerta ampliada |
+| 019 | Corrección: `UPDATE` con `WHERE` en las funciones del registro (el proyecto usa `pg_safeupdate`) |
 
 ## Desarrollo
 

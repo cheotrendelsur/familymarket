@@ -138,9 +138,10 @@ export const auth = {
     if (mockPromise) return (await mockPromise).auth.signIn(email, password)
     return supabase.auth.signInWithPassword({ email, password })
   },
-  async signUp(email, password) {
-    if (mockPromise) return (await mockPromise).auth.signUp(email, password)
-    return supabase.auth.signUp({ email, password })
+  /** `data` viaja como metadatos del usuario (nombre y código de la familia: los lee la base de datos al crear la cuenta). */
+  async signUp(email, password, data) {
+    if (mockPromise) return (await mockPromise).auth.signUp(email, password, data)
+    return supabase.auth.signUp({ email, password, options: data ? { data } : undefined })
   },
   /** Redirige a Google; al volver, Supabase deja la sesión lista (ver supabaseClient.js). */
   async signInWithGoogle() {

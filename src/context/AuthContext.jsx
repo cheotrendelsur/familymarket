@@ -113,7 +113,7 @@ export function AuthProvider({ children }) {
     setProfile((prev) => (prev ? { ...prev, tour_completed_at: prev.tour_completed_at || new Date().toISOString() } : prev))
   }, [])
 
-  const signUp = useCallback((email, password) => auth.signUp(email, password), [])
+  const signUp = useCallback((email, password, data) => auth.signUp(email, password, data), [])
 
   /**
    * Inicia sesión. Si el servidor pide esperar (muchos jugadores entrando a la vez

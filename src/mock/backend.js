@@ -32,6 +32,7 @@ const players = NAMES.map((username, i) => ({
 }))
 const me = players[0]
 const byId = (id) => players.find((p) => p.id === id)
+const signup = { code: 'DEMO2026', is_open: true, max_players: 60 }
 const invites = [
   { email: 'abuela.rosa@gmail.com', password_ok: false, note: null, created_at: iso(now() - hour(5)), username: null, joined: false },
   { email: 'primo.luis@hotmail.com', password_ok: true, note: null, created_at: iso(now() - hour(3)), username: null, joined: false },
@@ -514,6 +515,34 @@ const handlers = {
   async admin_list_players() {
     return players.map((p) => ({ ...p }))
   },
+  async signup_status() {
+    return { open: signup.is_open, full: players.length >= signup.max_players }
+  },
+  async check_signup_code({ p_code, p_username }) {
+    if (!signup.is_open) return { ok: false, reason: 'closed' }
+    if (String(p_code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase() !== signup.code) return { ok: false, reason: 'bad_code' }
+    const name = String(p_username || '').trim()
+    if (name && !/^[A-Za-z0-9_]{3,20}$/.test(name)) return { ok: false, reason: 'username_invalid' }
+    if (name && players.some((p) => (p.username || '').toLowerCase() === name.toLowerCase())) return { ok: false, reason: 'username_taken' }
+    return { ok: true }
+  },
+  async username_available({ p_username }) {
+    const name = String(p_username || '').trim()
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return { valid: false, available: false }
+    return { valid: true, available: !players.some((p) => (p.username || '').toLowerCase() === name.toLowerCase()) }
+  },
+  async admin_get_signup() {
+    return { code: signup.code, is_open: signup.is_open, max_players: signup.max_players, players: players.length }
+  },
+  async admin_set_signup({ p_open, p_max }) {
+    if (typeof p_open === 'boolean') signup.is_open = p_open
+    if (p_max) signup.max_players = p_max
+    return handlers.admin_get_signup()
+  },
+  async admin_rotate_signup_code() {
+    signup.code = Math.random().toString(36).slice(2, 10).toUpperCase().padEnd(8, 'X')
+    return handlers.admin_get_signup()
+  },
   async admin_list_invites() {
     return [
       ...players.map((p, i) => ({ email: `${p.username.toLowerCase()}@gmail.com`, password_ok: i % 3 === 0, note: null, created_at: iso(now() - hour(24 * 30)), username: p.username, joined: true })),
@@ -686,7 +715,8 @@ export const auth = {
     listeners.forEach((cb) => cb('SIGNED_IN', session))
     return { data: { session }, error: null }
   },
-  async signUp() {
+  async signUp(email, password, data) {
+    if (data?.username) me.username = data.username
     return auth.signIn()
   },
   async signInWithGoogle() {

@@ -108,8 +108,9 @@ update public.profiles set balance = 1000, tour_completed_at = null where email 
 
 -- Al terminar (cascada: perfiles, acciones, operaciones). Las pruebas de acceso (`loadtest.mjs access`) y de alta
 -- (`ui-onboarding`) también crean cuentas lt_acc_* / lt_signup_* / lt.acc…@gmail.com:
-delete from auth.users where email like '%@loadtest.invalid' or email like 'ltacc%+otra@gmail.com';
+delete from auth.users where email like '%@loadtest.invalid' or email like 'ltacc%+otra@gmail.com' or email like 'lt\_%@jugador.familymarket.invalid';
 delete from public.invited_emails where email like '%@loadtest.invalid' or email like 'lt.acc%@gmail.com';
+delete from public.signup_attempts;
 delete from public.networth_snapshots; select public._snapshot_networth(true);
 ```
 
@@ -231,3 +232,14 @@ el mayor valor aislado fue ~0.5 s). Las latencias de varios segundos que reporta
 servidor. Después de la carga, comprobación directa en SQL: todos los mercados conservan k = yes·no (error 1e-13), las acciones se conservan (error de
 redondeo 2e-6, descontando el arranque desigual de los mercados de varias opciones), el saldo de las 41 cuentas coincide con su libro de operaciones
 (diferencia 0.0000), sin saldos ni acciones negativos y con tantas filas de `transactions` como de `transaction_logs`.
+
+
+## Registro por código de la familia (migraciones 018 y 019)
+Reemplaza a «pedir correos»: link + código + nombre + contraseña, todo desde el celular (ver README → «Cómo entra la gente»). Pruebas:
+`loadtest.mjs access` (37 verificaciones contra el Auth real: sin código / código malo / nombre repetido / correo externo rechazados; con el código correcto la cuenta se crea,
+entra de una vez, nace con su nombre y $1000 y reaparece al iniciar sesión; registro cerrado y cupo lleno bloquean; la configuración real se restaura al terminar;
+`LOADTEST_ROTATE=1` además prueba cambiar el código), bloqueo por 200 intentos fallidos (comprobado en SQL con reversión), `tests/ui-auth.test.jsx` (pantalla, link con
+código, tarjeta del dueño) y `tests/ui-onboarding.test.jsx` (alta real completa con tutorial y reingreso por nombre de usuario).
+
+**Hallazgo corregido (019):** el proyecto tiene `pg_safeupdate`, que rechaza `UPDATE` sin `WHERE` para las funciones llamadas por la API. Las dos funciones del dueño que cambiaban la fila
+única de `signup_config` fallaban en producción con «UPDATE requires a WHERE clause»; las pruebas contra el servidor real lo detectaron (la prueba en modo demo no podía) y ahora llevan `where id`.

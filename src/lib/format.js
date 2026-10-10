@@ -66,12 +66,19 @@ export const avatarColor = (name) => {
 }
 
 /** Traduce errores de inicio de sesión / registro. */
-export function friendlyAuthError(error) {
+export function friendlyAuthError(error, context = 'password') {
   const msg = (error && (error.message || String(error))) || ''
-  if (/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.'
-  // La base de datos solo deja crear cuentas a quien el dueño invitó (ver migración 015).
+  if (/Invalid login credentials/i.test(msg)) return 'Usuario o contraseña incorrectos. Si lo olvidaste, pídele a Cheche que te la restablezca.'
+  // La base de datos solo deja crear cuentas con el código de la familia o con un correo invitado (migraciones 015 y 018).
+  if (/BAD_CODE/i.test(msg)) return 'Ese código no es correcto. Revisa el mensaje del grupo de la familia.'
+  if (/SIGNUP_CLOSED/i.test(msg)) return 'El registro está cerrado por ahora. Pídele a Cheche que lo abra.'
+  if (/SIGNUP_FULL/i.test(msg)) return 'Ya se completó el cupo de jugadores.'
+  if (/USERNAME_TAKEN/i.test(msg)) return 'Ese nombre ya está en uso. Elige otro.'
+  if (/USERNAME_INVALID|BAD_EMAIL/i.test(msg)) return 'Tu nombre debe tener de 3 a 20 letras, números o guion bajo (_).'
   if (/Database error saving new user|EMAIL_NOT_INVITED|signups? not allowed/i.test(msg)) {
-    return 'Ese correo no está en la lista de la familia. Pídele a Cheche que lo agregue (dile exactamente qué correo usas).'
+    return context === 'google'
+      ? 'Ese correo de Google no está en la lista de la familia. Pídele a Cheche que lo agregue, o crea tu cuenta con el código de la familia.'
+      : 'No se pudo crear la cuenta. Revisa que el código sea correcto y que el nombre no esté ya en uso.'
   }
   if (/PASSWORD_NOT_ALLOWED/i.test(msg)) return 'Ese correo debe entrar con Google. Toca «Continuar con Google».'
   if (/EMAIL_DUPLICATE/i.test(msg)) return 'Ya hay una cuenta con ese correo. Entra con Google o con tu contraseña.'

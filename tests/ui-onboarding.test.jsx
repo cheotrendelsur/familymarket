@@ -1,4 +1,5 @@
-// E2E del alta de un jugador NUEVO: registro -> nombre de usuario -> juego -> salir -> entrar.
+// E2E del alta de un jugador NUEVO con el código de la familia:
+//   «Soy nuevo» (código + nombre + contraseña) -> tutorial -> juego -> salir -> entrar con su usuario.
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createClient } from '@supabase/supabase-js'
@@ -8,60 +9,46 @@ import { consoleErrors } from './setup'
 const T = { timeout: 45000 }
 
 describe('Alta de jugador nuevo', () => {
-  it('se registra, elige nombre, aparece en el ranking, cierra sesión y vuelve a entrar', async () => {
+  it('se registra con el código de la familia, hace el tutorial, aparece en el ranking, cierra sesión y vuelve a entrar con su usuario', async () => {
     window.localStorage.clear()
     const c = creds()
     const suffix = Math.random().toString(16).slice(2, 8)
-    const email = `lt_signup_${suffix}@${c.domain}`
     const username = `lt_n${suffix}`
+
+    // el código vigente (solo el dueño puede verlo)
+    const owner = (await apiClient(0)).client
+    const info = await owner.rpc('admin_get_signup')
+    expect(info.error).toBeNull()
+    const code = info.data.code
+    expect(info.data.is_open).toBe(true)
 
     goto('/auth')
     const { default: App } = await import('../src/App.jsx')
     render(<App />)
 
-    // ---- registro: solo con invitación del dueño ----
-    // (si algún día se activa «Entrar con Google», el formulario de correo queda tras «Usar correo y contraseña»)
-    await waitFor(() => expect(screen.queryByRole('status', { name: 'Cargando' })).toBeNull(), T)
-    const useEmail = screen.queryByRole('button', { name: /Usar correo y contraseña/ })
-    if (useEmail) fireEvent.click(useEmail)
-    fireEvent.click(await screen.findByText('¿No tienes cuenta? Regístrate', {}, T))
-    expect(screen.getByText('Crear cuenta', { selector: 'h2' })).toBeTruthy()
+    // ---- pantalla de acceso: «Entrar» por defecto, «Soy nuevo» para registrarse ----
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' }, T)).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Soy nuevo' }))
+    expect(await screen.findByRole('heading', { name: 'Crea tu cuenta' }, T)).toBeTruthy()
 
-    const fillAndSubmit = async (mail) => {
-      fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: mail } })
-      fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: c.password } })
-      fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
-      expect(await screen.findByText('Crear cuenta nueva')).toBeTruthy() // confirmación del correo
-      fireEvent.click(screen.getByRole('button', { name: 'Sí, crear cuenta' }))
+    const fill = (codeValue, nameValue) => {
+      fireEvent.change(screen.getByLabelText('Código de la familia'), { target: { value: codeValue } })
+      fireEvent.change(screen.getByLabelText('Tu nombre de jugador'), { target: { value: nameValue } })
+      fireEvent.change(screen.getByLabelText('Crea una contraseña'), { target: { value: c.password } })
+      fireEvent.click(screen.getByRole('button', { name: 'Crear mi cuenta y entrar' }))
     }
 
-    // 1) un desconocido (no está en la lista) NO puede crear cuenta
-    await fillAndSubmit(`lt_noinv_${suffix}@${c.domain}`)
-    expect(await screen.findByText(/no está en la lista de la familia/, {}, T)).toBeTruthy()
-    expect(screen.queryByText('¡Bienvenido a FamilyMarket!')).toBeNull()
+    // 1) código incorrecto: no se crea nada
+    fill('ZZZZ-ZZZZ', username)
+    expect((await screen.findByRole('alert', {}, T)).textContent).toMatch(/código no es correcto/)
+    expect(screen.queryByText('¡Tutorial completado!')).toBeNull()
 
-    // 2) el dueño lo invita (con contraseña) y entonces sí puede
-    const owner = (await apiClient(0)).client
-    const invited = await owner.rpc('admin_invite_emails', { p_emails: [email], p_password_ok: true })
-    expect(invited.error).toBeNull()
-    expect(invited.data.added).toBe(1)
-    await fillAndSubmit(email)
+    // 2) nombre ya usado (sin importar mayúsculas): se avisa antes de crear la cuenta
+    fill(code, 'CHECHE')
+    expect(await screen.findByText(/Ese nombre ya está en uso/, {}, T)).toBeTruthy()
 
-    // ---- elegir nombre ----
-    expect(await screen.findByText('¡Bienvenido a FamilyMarket!', {}, T)).toBeTruthy()
-    const nameInput = screen.getByLabelText('Nombre de usuario')
-    const submit = screen.getByRole('button', { name: 'Comenzar a jugar' })
-
-    fireEvent.change(nameInput, { target: { value: 'a!' } })
-    fireEvent.click(submit)
-    expect(await screen.findByText(/Usa de 3 a 20 caracteres/)).toBeTruthy()
-
-    fireEvent.change(nameInput, { target: { value: 'plemecho' } }) // ya existe (en minúsculas)
-    fireEvent.click(submit)
-    expect(await screen.findByText('Este nombre ya está en uso', {}, T)).toBeTruthy()
-
-    fireEvent.change(nameInput, { target: { value: username } })
-    fireEvent.click(submit)
+    // 3) todo bien: la cuenta se crea y entra directo (sin pedir correo ni elegir nombre otra vez)
+    fill(code.toLowerCase(), username)
 
     // ---- tutorial interactivo (una sola vez): hay que hacer cada operación ----
     const btn = (name) => screen.findByRole('button', { name }, T)
@@ -113,10 +100,13 @@ describe('Alta de jugador nuevo', () => {
 
     // el servidor recuerda que ya vio el tutorial (vale en cualquier dispositivo)
     const check = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
-    await check.auth.signInWithPassword({ email, password: c.password })
-    const { data: row } = await check.from('profiles').select('tour_completed_at, balance').single()
+    const login = await check.auth.signInWithPassword({ email: `${username}@jugador.familymarket.invalid`, password: c.password })
+    expect(login.error).toBeNull()
+    const { data: row } = await check.from('profiles').select('tour_completed_at, balance, username, is_admin, is_moderator').single()
     expect(row.tour_completed_at).not.toBeNull()
     expect(Number(row.balance)).toBe(1000)
+    expect(row.username).toBe(username)
+    expect(row.is_admin || row.is_moderator).toBe(false)
 
     // aparece en el ranking
     fireEvent.click(screen.getByRole('link', { name: /Ranking/ }))
@@ -124,17 +114,17 @@ describe('Alta de jugador nuevo', () => {
 
     // ---- salir ----
     fireEvent.click(screen.getByLabelText('Cerrar sesión'))
-    expect(await screen.findByText('Iniciar sesión', { selector: 'h2' }, T)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' }, T)).toBeTruthy()
 
     // ---- contraseña incorrecta ----
-    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: email } })
+    fireEvent.change(screen.getByLabelText('Usuario o correo'), { target: { value: username } })
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'incorrecta123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
-    expect(await screen.findByText('Correo o contraseña incorrectos.', {}, T)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }))
+    expect(await screen.findByText(/Usuario o contraseña incorrectos/, {}, T)).toBeTruthy()
 
-    // ---- entrar bien ----
+    // ---- entrar bien, solo con su nombre de usuario ----
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: c.password } })
-    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }))
     expect(await screen.findByLabelText('Buscar mercados', {}, T)).toBeTruthy()
 
     const bad = consoleErrors.filter((m) => /Warning|Error|Uncaught|Cannot|undefined/i.test(m) && !/act\(|AuthApiError|Invalid login/.test(m))

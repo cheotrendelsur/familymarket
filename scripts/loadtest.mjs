@@ -155,6 +155,9 @@ async function phaseSecurity(U, C) {
     ['admin_reopen_market', { p_market_id: fake }],
     ['admin_recent_actions', { p_limit: 5 }],
     ['admin_list_invites', {}],
+    ['admin_get_signup', {}],
+    ['admin_set_signup', { p_open: false, p_max: 1 }],
+    ['admin_rotate_signup_code', {}],
     ['admin_invite_emails', { p_emails: ['intruso@example.com'], p_password_ok: true }],
     ['admin_set_invite_password', { p_email: 'intruso@example.com', p_value: true }],
     ['admin_remove_invite', { p_email: 'intruso@example.com' }],
@@ -176,6 +179,8 @@ async function phaseSecurity(U, C) {
   check('NO puede insertar mercados', !!w4.error)
   const w5 = await c.from('markets').update({ closed: true }).eq('id', fake)
   check('NO puede cerrar mercados', !!w5.error || true)
+  const sc = await c.from('signup_config').select('*')
+  check('no puede leer el código de la familia directamente', !!sc.error || (sc.data?.length ?? 0) === 0)
   const inv = await c.from('invited_emails').select('*')
   check('no puede leer la lista de invitados', !!inv.error || (inv.data?.length ?? 0) === 0)
   const aa = await c.from('admin_actions').select('*')
@@ -838,6 +843,93 @@ async function phaseAccess(U, C) {
   check('se puede quitar una invitación pendiente', !rem2.error, msg(rem2))
   const s4 = await anon().auth.signUp({ email: pend, password: pw })
   check('y esa persona ya no puede crear cuenta', !!s4.error && !s4.data?.session)
+
+  // 6) Registro por «código de la familia» (sin correos): se restaura la configuración real al terminar
+  section('ACCESO · registro con el código de la familia')
+  const before = (await call(admin, 'admin_get_signup')).data
+  try {
+    check('el dueño ve el código (8 caracteres) y el registro abierto', /^[A-Z2-9]{8}$/.test(before?.code || '') && before.is_open === true, JSON.stringify(before))
+    const notOwner = await call(C[1], 'admin_get_signup')
+    check('un jugador normal NO puede ver el código', !!notOwner.error, msg(notOwner))
+    const code = before.code
+    const tag2 = Math.random().toString(16).slice(2, 8)
+    const mkName = (k) => `lt_c${tag2}${k}` // lt_c + 6 + 1 = 10 caracteres
+    const mailOf = (name) => `${name.toLowerCase()}@jugador.familymarket.invalid`
+    const signUp = (name, password, data) => anon().auth.signUp({ email: mailOf(name), password, options: { data } })
+
+    const st = await anon().rpc('signup_status')
+    check('signup_status (público) dice que está abierto', st.data?.open === true && st.data?.full === false, JSON.stringify(st.data))
+    const bad = await anon().rpc('check_signup_code', { p_code: 'AAAAAAAA' })
+    check('código incorrecto: rechazado con motivo', bad.data?.ok === false && bad.data?.reason === 'bad_code', JSON.stringify(bad.data))
+    const good = await anon().rpc('check_signup_code', { p_code: code.toLowerCase().replace(/^(.{4})/, '$1-'), p_username: mkName('a') })
+    check('código correcto (en minúsculas y con guion) aceptado', good.data?.ok === true, JSON.stringify(good.data))
+    const taken = await anon().rpc('check_signup_code', { p_code: code, p_username: 'LT_USER_01' })
+    check('nombre ya usado (otra mayúscula): rechazado', taken.data?.ok === false && taken.data?.reason === 'username_taken', JSON.stringify(taken.data))
+    const inval = await anon().rpc('check_signup_code', { p_code: code, p_username: 'a b!' })
+    check('nombre inválido: rechazado', inval.data?.ok === false && inval.data?.reason === 'username_invalid', JSON.stringify(inval.data))
+    const av1 = await anon().rpc('username_available', { p_username: 'lt_user_01' })
+    const av2 = await anon().rpc('username_available', { p_username: mkName('z') })
+    check('username_available: ocupado / libre', av1.data?.available === false && av2.data?.available === true, JSON.stringify([av1.data, av2.data]))
+
+    // creación de cuenta de verdad (directo contra Auth, saltándose la pantalla)
+    const n1 = mkName('1')
+    const noCode = await signUp(n1, pw, { username: n1 })
+    check('SIN código no se crea la cuenta', !!noCode.error && !noCode.data?.session, noCode.error?.message)
+    const wrong = await signUp(n1, pw, { username: n1, family_code: 'AAAAAAAA' })
+    check('con código incorrecto no se crea la cuenta', !!wrong.error && !wrong.data?.session, wrong.error?.message)
+    const takenName = await signUp('LT_USER_01', pw, { username: 'LT_USER_01', family_code: code })
+    check('con nombre ya usado no se crea la cuenta', !!takenName.error && !takenName.data?.session, takenName.error?.message)
+    const realMail = await anon().auth.signUp({ email: `${mkName('r')}@gmail.com`, password: pw, options: { data: { username: mkName('r'), family_code: code } } })
+    check('el código no sirve para registrar correos externos', !!realMail.error && !realMail.data?.session, realMail.error?.message)
+    const okSignup = await signUp(n1, pw, { username: n1, family_code: code })
+    check('con el código correcto SÍ se crea la cuenta y entra de una vez', !okSignup.error && !!okSignup.data?.session, okSignup.error?.message)
+    if (okSignup.data?.session) {
+      const me = mk(okSignup.data.session.access_token)
+      const prof = await me.from('profiles').select('username, balance, is_admin, is_moderator, tour_completed_at').single()
+      check(
+        'su perfil nace con su nombre, $1000, sin permisos y sin tutorial visto',
+        prof.data?.username === n1 && Number(prof.data?.balance) === 1000 && !prof.data?.is_admin && !prof.data?.is_moderator && prof.data?.tour_completed_at === null,
+        JSON.stringify(prof.data)
+      )
+      const lb = await me.rpc('get_leaderboard')
+      check('y aparece en el ranking', lb.data?.some((r) => r.username === n1), msg(lb))
+      const relog = await anon().auth.signInWithPassword({ email: mailOf(n1), password: pw })
+      check('vuelve a entrar con su usuario y contraseña', !relog.error && !!relog.data?.session, relog.error?.message)
+    }
+    const dupName = await signUp(n1.toUpperCase(), pw, { username: n1.toUpperCase(), family_code: code })
+    check('no se puede repetir el nombre con otras mayúsculas', !!dupName.error && !dupName.data?.session, dupName.error?.message)
+
+    // registro cerrado y cupo lleno
+    const closed = await call(admin, 'admin_set_signup', { p_open: false })
+    check('el dueño cierra el registro', closed.data?.is_open === false, msg(closed))
+    const n2 = mkName('2')
+    const s2c = await signUp(n2, pw, { username: n2, family_code: code })
+    const c2c = await anon().rpc('check_signup_code', { p_code: code })
+    const st2 = await anon().rpc('signup_status')
+    check('con el registro cerrado nadie nuevo entra (ni con el código)', !!s2c.error && !s2c.data?.session && c2c.data?.reason === 'closed' && st2.data?.open === false, s2c.error?.message)
+    await call(admin, 'admin_set_signup', { p_open: true })
+    const now = (await call(admin, 'admin_get_signup')).data
+    await call(admin, 'admin_set_signup', { p_open: true, p_max: now.players })
+    const s3 = await signUp(n2, pw, { username: n2, family_code: code })
+    const c3 = await anon().rpc('check_signup_code', { p_code: code })
+    check('con el cupo lleno nadie nuevo entra', !!s3.error && !s3.data?.session && c3.data?.reason === 'full', s3.error?.message)
+    await call(admin, 'admin_set_signup', { p_open: true, p_max: now.players + 5 })
+    const s4 = await signUp(n2, pw, { username: n2, family_code: code })
+    check('al reabrir y subir el cupo vuelve a funcionar', !s4.error && !!s4.data?.session, s4.error?.message)
+    // Cambiar el código INVALIDA el que ya se repartió: solo se prueba si se pide (LOADTEST_ROTATE=1).
+    if (process.env.LOADTEST_ROTATE === '1') {
+      const rot = await call(admin, 'admin_rotate_signup_code')
+      check('el dueño cambia el código: sale uno nuevo de 8 caracteres', /^[A-Z2-9]{8}$/.test(rot.data?.code || '') && rot.data.code !== code, msg(rot))
+      const oldCode = await anon().rpc('check_signup_code', { p_code: code })
+      const newCode = await anon().rpc('check_signup_code', { p_code: rot.data?.code })
+      check('el código anterior deja de funcionar y el nuevo sí', oldCode.data?.reason === 'bad_code' && newCode.data?.ok === true, JSON.stringify([oldCode.data, newCode.data]))
+      before.code = rot.data?.code // el código vigente ahora es el nuevo
+    }
+  } finally {
+    await call(admin, 'admin_set_signup', { p_open: before.is_open, p_max: before.max_players })
+    const after = (await call(admin, 'admin_get_signup')).data
+    check('la configuración real del registro quedó como estaba', after?.is_open === before.is_open && after?.max_players === before.max_players && after?.code === before.code, JSON.stringify(after))
+  }
 
   // 5) Gmail: puntos y «+etiqueta» no crean cuentas distintas
   const base = `lt.acc${tag}`
