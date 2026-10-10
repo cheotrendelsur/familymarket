@@ -327,3 +327,17 @@ en 4 pantallas × 6 cambios de filtro + cambios rápidos seguidos: 66/66, cada r
 ## Portafolio de cada jugador (nuevo)
 `get_player_networth(p_user_id, p_since, p_max_points)` (solo jugadores activos, con punto de anclaje) y el componente `PortfolioChart`: total (efectivo + apuestas) en el tiempo, línea de efectivo, línea punteada del
 dinero inicial, cuánto subió o bajó en el rango y tooltip con total / efectivo / en apuestas. Aparece en **Portafolio → «Mi portafolio»** y en el **perfil de cada jugador** (Ranking → tocar un jugador).
+
+
+# Fase 7 · +15 % de volatilidad (octubre 2026, con el juego en marcha)
+
+**Pedido:** que cada mercado sea 15 % más volátil, los nuevos y los ya creados.
+**Cómo se logra:** en el mercado CPMM el movimiento del precio por dólar es inversamente proporcional a la liquidez («profundidad» = raíz de yes_pool × no_pool). Dividir la liquidez entre **1.15** (no multiplicar por 0.85, que daría
++17.4 %) da +15 %: con `trading.js` se midió que el mismo dinero mueve el precio ×1.150 (compras de $5–25), ×1.148 ($50), ×1.146 ($100) y ×1.141 ($200), en mercados nuevos y en los ya empezados (67 %, 49 %, 85 %).
+- **Mercados nuevos:** `game_settings.initial_liquidity` 2000 → **1739.13** (y su valor por defecto); también los mercados de varias opciones (nacen a 1/N con la profundidad nueva).
+- **Mercados ya creados y abiertos:** `yes_pool` y `no_pool` ÷ 1.15. Se escalan las dos piscinas por igual, así que **el precio no cambia, ni el valor de las posiciones, ni el patrimonio de nadie**; solo cambia cuánto se mueve el precio
+  con las siguientes operaciones. Los mercados ya resueltos no se tocan (conservan su historial exacto). Migración 025 (idempotente: solo actúa si la liquidez todavía vale 2000).
+**Verificación en el servidor real SIN dejar datos** (transacción que se deshace): diferencia máxima de precio entre antes y después = 0; diferencia máxima de patrimonio de los jugadores = 0; un mercado nuevo nace con 1739.13/1739.13 y
+una compra de $50 mueve 1.2100¢ antes y 1.3889¢ después (×1.148); un grupo nuevo nace a 1/3 con profundidad 1739.13; el titular de la posición abierta más grande (651.56 acciones) puede venderla entera (cobra $401.50).
+Después de aplicarla en producción: los 2 mercados abiertos pasaron a profundidad 1739.13 con los mismos precios (66.99 % y 48.86 %), los 6 resueltos siguen en 2000.00, y los saldos y operaciones no cambiaron.
+**Si se quiere ajustar de nuevo:** `update public.game_settings set initial_liquidity = X where id;` solo afecta mercados NUEVOS; para uno ya abierto hay que escalar sus dos piscinas por el mismo factor (nunca una sola).

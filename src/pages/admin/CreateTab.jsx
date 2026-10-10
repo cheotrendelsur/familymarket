@@ -40,7 +40,7 @@ export default function CreateTab() {
   return (
     <Card
       title="Crear mercado"
-      subtitle={`Empieza con ${config.initial_liquidity} de liquidez por lado · 50% / 50%`}
+      subtitle={`Empieza con ${Math.round(config.initial_liquidity)} de liquidez por lado · 50% / 50%`}
       icon={<Plus size={24} strokeWidth={2.6} />}
     >
       <MarketForm key={formKey} submitLabel="Publicar mercado" onSubmit={create} />

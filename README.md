@@ -13,7 +13,7 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | Regla | Valor |
 |---|---|
 | Saldo inicial | $1,000 |
-| Liquidez inicial de cada mercado | 2000 YES / 2000 NO (precio inicial 50¢; calibrada para 30-40 jugadores, ver `docs/AUDITORIA.md` fase 3) |
+| Liquidez inicial de cada mercado | 1739.13 YES / 1739.13 NO (precio inicial 50¢). Era 2000; se dividió entre 1.15 para que el precio se mueva un 15 % más con el mismo dinero (ver `docs/AUDITORIA.md` fase 7) |
 | Comisión (fee) | 2 % en cada compra y venta |
 | Límite de movimientos | 60 por día (el día cambia a medianoche **hora de Venezuela**) |
 | Precio mínimo / máximo | 1¢ – 99¢ |
@@ -157,7 +157,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…024). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…025). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -181,6 +181,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 011 | El staff puede ver (y así borrar) objetos del bucket de fotos |
 | 012 | Tutorial: `profiles.tour_completed_at` + `complete_tour()` |
 | 013 | Liquidez inicial 1200 → 2000 (calibrada para 30-40 jugadores) |
+| 025 | **+15 % de volatilidad**: liquidez inicial 2000 → 1739.13 y las piscinas de los mercados abiertos ÷ 1.15 (precio y patrimonios intactos) |
 | 014 | Mercados de varias opciones: arranque justo 1/N por opción (sin ganancia segura «No en todas») |
 | 015 | Lista de invitados + compuerta de registro (`invited_emails`, `enforce_invite`, RPC de gestión del dueño) |
 | 016 | Un moderador solo cierra, edita y resuelve los mercados que él creó (`resolve_market`, `staff_update_market`) |
