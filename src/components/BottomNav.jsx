@@ -2,6 +2,7 @@ import { Briefcase, History, Home, Lightbulb, Settings, Trophy } from 'lucide-re
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useGame } from '../context/GameContext'
+import { useManage } from '../hooks/useManage'
 
 const BASE_TABS = [
   { to: '/', label: 'Inicio', icon: Home },
@@ -15,6 +16,7 @@ const ADMIN_TAB = { to: '/admin', label: 'Admin', icon: Settings }
 export default function BottomNav() {
   const { isStaff } = useAuth()
   const { pendingSuggestions, activeItems } = useGame()
+  const { canManageItem } = useManage()
   const { pathname } = useLocation()
   const tabs = isStaff ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
 
@@ -30,7 +32,7 @@ export default function BottomNav() {
           const isActive =
             tab.to === '/' ? pathname === '/' || pathname.startsWith('/m/') || pathname.startsWith('/g/') : pathname.startsWith(tab.to)
           // Lo que espera al staff: sugerencias por revisar + mercados que ya cerraron y falta resolver.
-          const badge = tab.to === '/admin' ? (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending').length : 0
+          const badge = tab.to === '/admin' ? (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending' && canManageItem(i)).length : 0
           return (
             <NavLink
               key={tab.to}

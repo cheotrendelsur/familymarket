@@ -7,6 +7,7 @@ import MarketImage from '../../components/MarketImage'
 import Sheet from '../../components/ui/Sheet'
 import { noPrice, yesPrice } from '../../lib/trading'
 import { sideLabel } from '../../lib/format'
+import { useManage } from '../../hooks/useManage'
 import { useMarketActions } from './useMarketActions'
 
 const FILTERS = [
@@ -104,7 +105,9 @@ function WinnerSheet({ list, onPick, onClose }) {
 
 export default function MarketsTab() {
   const { isOwner } = useAuth()
-  const { markets, marketsLoaded } = useGame()
+  const { markets: allMarkets, marketsLoaded } = useGame()
+  const { canManage } = useManage()
+  const markets = useMemo(() => allMarkets.filter(canManage), [allMarkets, canManage])
   const actions = useMarketActions()
   const [filter, setFilter] = useState('open')
   const [more, setMore] = useState(null) // mercado con el menú de acciones abierto
@@ -152,6 +155,8 @@ export default function MarketsTab() {
           </button>
         ))}
       </div>
+
+      {!isOwner && <p className="text-xs text-gray-500">Como moderador, aquí ves y manejas solo los mercados que tú creaste.</p>}
 
       {empty && <p className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">No hay mercados en esta lista.</p>}
 

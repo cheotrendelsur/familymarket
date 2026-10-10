@@ -481,8 +481,17 @@ async function phaseConcurrency(U, C) {
   stop = true
   await Promise.all(runners)
   check('la resolución concurrente termina bien', !resG.error && resG.data?.success, msg(resG))
-  const afterClose = log.filter((e) => e.ok && e.t > tResolved + 50)
-  check('ninguna operación se ejecutó DESPUÉS de cerrar el mercado', afterClose.length === 0, `n=${afterClose.length}`)
+  // Comprobación en el SERVIDOR (la hora del cliente no sirve: con latencias de segundos una respuesta puede llegar tarde
+  // aunque la operación se haya ejecutado antes de resolver). Las horas guardadas siguen el orden real de ejecución.
+  const { data: gm } = await admin.from('markets').select('resolved_at').eq('id', G).single()
+  let late = 0
+  let registered = 0
+  for (const i of traders) {
+    const { data: tx } = await C[i].from('transactions').select('created_at').eq('market_id', G).in('type', ['BUY', 'SELL'])
+    registered += tx?.length || 0
+    late += (tx || []).filter((t) => Date.parse(t.created_at) > Date.parse(gm.resolved_at)).length
+  }
+  check('ninguna compra/venta quedó registrada DESPUÉS de la hora de resolución (orden real)', late === 0 && registered > 0, `tardías=${late} registradas=${registered}`)
   const closedErrs = log.filter((e) => !e.ok && /cerrado/.test(e.err)).length
   console.log(`  ℹ️  ${log.filter((e) => e.ok).length} operaciones OK antes del cierre · ${closedErrs} rechazadas por "mercado cerrado" · resolución en ${(tResolved - tr).toFixed(0)} ms`)
 
@@ -583,8 +592,36 @@ async function phaseFeatures(U, C) {
   const bS3 = await call(p2, 'buy_shares', { p_market_id: S, p_side: 'YES', p_investment: 5 })
   check('extender el cierre reabre las apuestas', !extend.error && !bS3.error, msg(extend) + msg(bS3))
 
+  section('MODERADOR · solo cierra, edita y resuelve los mercados QUE ÉL CREÓ')
+  const own = await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado del DUEÑO (el moderador no lo maneja)' })
+  const OWN = own.data
+  const closeOther = await call(p1, 'staff_update_market', { p_market_id: OWN, p_patch: { closes_at: new Date(Date.now() + 3600e3).toISOString() }, p_apply_group: false })
+  check('moderador NO puede cerrar/editar un mercado del dueño', !!closeOther.error && /tú creaste/i.test(msg(closeOther)), msg(closeOther))
+  const editOther = await call(p1, 'staff_update_market', { p_market_id: OWN, p_patch: { question: '[TEST] hackeado' } })
+  check('moderador NO puede cambiar la pregunta de un mercado ajeno', !!editOther.error, msg(editOther))
+  const resolveOther = await call(p1, 'resolve_market', { p_market_id: OWN, p_outcome: 'YES' })
+  check('moderador NO puede resolver un mercado del dueño', !!resolveOther.error && /tú creaste/i.test(msg(resolveOther)), msg(resolveOther))
+  const stillOpen = await getMarket(admin, OWN)
+  check('el mercado ajeno sigue intacto (abierto, misma pregunta, sin fecha de cierre)', stillOpen.closed === false && stillOpen.question.startsWith('[TEST] Mercado del DUEÑO') && stillOpen.closes_at === null)
+  const ownerCloses = await call(admin, 'staff_update_market', { p_market_id: OWN, p_patch: { closes_at: new Date(Date.now() + 7200e3).toISOString() }, p_apply_group: false })
+  check('el dueño sí puede cerrar/editar cualquiera', !ownerCloses.error, msg(ownerCloses))
+  // grupos: lo de un moderador es suyo; lo del dueño, no
+  const gOwn = await call(admin, 'staff_create_market_group', { p_topic: '[TEST] Grupo del DUEÑO', p_options: ['[TEST] X1', '[TEST] X2', '[TEST] X3'] })
+  const gEdit = await call(p1, 'staff_update_market', { p_market_id: gOwn.data.ids[0], p_patch: { description: 'x' }, p_apply_group: true })
+  check('moderador NO puede editar un grupo del dueño', !!gEdit.error, msg(gEdit))
+  const gRes = await call(p1, 'resolve_market', { p_market_id: gOwn.data.ids[1], p_outcome: 'NO' })
+  check('moderador NO puede resolver opciones de un grupo del dueño', !!gRes.error, msg(gRes))
+  const gMine = await call(p1, 'staff_create_market_group', { p_topic: '[TEST] Grupo del moderador', p_options: ['[TEST] Y1', '[TEST] Y2', '[TEST] Y3'] })
+  const gMineEdit = await call(p1, 'staff_update_market', { p_market_id: gMine.data.ids[0], p_patch: { description: 'mío' }, p_apply_group: true })
+  check('moderador SÍ edita su propio grupo (todas las opciones)', !gMineEdit.error && gMineEdit.data?.updated === 3, msg(gMineEdit))
+  const gMineRes = await call(p1, 'resolve_market', { p_market_id: gMine.data.ids[0], p_outcome: 'YES' })
+  check('moderador SÍ resuelve las opciones de su propio grupo', !gMineRes.error, msg(gMineRes))
+  // un jugador cualquiera tampoco puede (ya cubierto arriba) y el dueño resuelve lo ajeno sin problema
+  const ownerRes = await call(admin, 'resolve_market', { p_market_id: OWN, p_outcome: 'NO' })
+  check('el dueño sí puede resolver cualquier mercado', !ownerRes.error, msg(ownerRes))
+
   section('NOTIFICACIONES · victoria, derrota y "deshacer resolución"')
-  const A = (await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado de notificaciones', p_category: 'juegos' })).data
+  const A = (await call(p1, 'staff_create_market', { p_question: '[TEST] Mercado de notificaciones', p_category: 'juegos' })).data // lo crea el moderador lt_01: es suyo
   const bal2a = await getBalance(p2, id2)
   await call(p1, 'buy_shares', { p_market_id: A, p_side: 'YES', p_investment: 100 })
   await call(p2, 'buy_shares', { p_market_id: A, p_side: 'NO', p_investment: 60 })

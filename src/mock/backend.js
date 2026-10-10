@@ -74,6 +74,7 @@ const GROUP_DOMINO = 'g-domino'
 let markets = [
   mk({
     id: 'rain',
+    created_by: 'me',
     question: '¿Lloverá el sábado en Margarita?',
     description: 'Cuenta como lluvia si cae agua por más de 10 minutos en la posada. Lo confirma Tomás.',
     category: 'clima',
@@ -495,6 +496,7 @@ const handlers = {
   },
   async staff_update_market({ p_market_id, p_patch, p_apply_group }) {
     const m = markets.find((x) => x.id === p_market_id)
+    if (!me.is_admin && m.created_by !== 'me') throw new Error('Solo puedes editar o cerrar los mercados que tú creaste')
     const targets = p_apply_group && m.group_id ? markets.filter((x) => x.group_id === m.group_id) : [m]
     for (const t of targets) {
       Object.entries(p_patch).forEach(([k, v]) => {
@@ -564,6 +566,7 @@ const handlers = {
   },
   async resolve_market({ p_market_id, p_outcome }) {
     const m = markets.find((x) => x.id === p_market_id)
+    if (!me.is_admin && m.created_by !== 'me') throw new Error('Solo puedes resolver los mercados que tú creaste')
     m.closed = true
     m.outcome = p_outcome
     m.resolved_at = iso(now())

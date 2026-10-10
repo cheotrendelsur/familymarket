@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useGame } from '../context/GameContext'
+import { useManage } from '../hooks/useManage'
 import ActivityTab from './admin/ActivityTab'
 import CreateTab from './admin/CreateTab'
 import DangerTab from './admin/DangerTab'
@@ -33,10 +34,11 @@ function MoreTab({ isOwner }) {
 export default function AdminPage() {
   const { isStaff, isOwner } = useAuth()
   const { pendingSuggestions, activeItems } = useGame()
+  const { canManageItem } = useManage()
   const location = useLocation()
   const [tab, setTab] = useState(location.state?.tab || 'today')
 
-  const todo = (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending').length
+  const todo = (pendingSuggestions || 0) + activeItems.filter((i) => i.state === 'pending' && canManageItem(i)).length
 
   const tabs = useMemo(() => {
     const list = [

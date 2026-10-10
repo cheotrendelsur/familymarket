@@ -31,7 +31,7 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | Rol | Puede |
 |---|---|
 | **Dueño** (`is_admin`) | Todo: crear/editar/resolver/anular mercados, **deshacer una resolución**, nombrar moderadores, cambiar nombres, restablecer contraseñas, ajustar saldos, empezar una partida nueva |
-| **Moderador** (`is_moderator`) | Crear, editar y resolver mercados, subir fotos, revisar sugerencias y ver el registro de actividad |
+| **Moderador** (`is_moderator`) | Crear mercados y subir fotos, revisar sugerencias y ver el registro de actividad. **Cerrar, editar y resolver SOLO los mercados que él creó** (incluye los que crea al aprobar una sugerencia); los del dueño u otros moderadores no los puede tocar (migración 016, lo exige el servidor) |
 | **Jugador** | Operar, sugerir mercados, ver ranking, perfiles y feed en vivo |
 
 El dueño nombra moderadores desde **Admin → Gente** (un interruptor en la fila de cada jugador).
@@ -76,12 +76,12 @@ Authentication → Providers → Google → activar y pegar ambos. Authenticatio
 
 Pensado para operarlo con el pulgar:
 
-- **Hoy:** solo lo pendiente. «Por resolver» (mercados que ya cerraron apuestas) con botones grandes **Gana Sí / Gana No**
+- **Hoy:** solo lo pendiente (a un moderador le aparece solo lo suyo). «Por resolver» (mercados que ya cerraron apuestas) con botones grandes **Gana Sí / Gana No**
   (en los múltiples: «Gana este» en cada opción), «Sugerencias nuevas» con **Publicar** de un toque (o Editar / No) y los que cierran
   en 24 h con «Cerrar ya». La insignia roja de la pestaña Admin cuenta lo que espera.
 - **Crear:** pregunta, foto (cámara o galería), atajos de cierre («En 2 horas», «Hoy 8 pm», «Mañana»…) y categoría. Descripción y
   mercado sorpresa están en «Más opciones».
-- **Mercados:** lista por estado; resolver con un toque y el menú «⋯» (editar, cerrar apuestas, anular, deshacer resolución).
+- **Mercados:** lista por estado; resolver con un toque y el menú «⋯» (editar, cerrar apuestas, anular, deshacer resolución). El moderador ve aquí solo los que creó.
 - **Gente** (solo dueño): interruptor de moderador por jugador, nombre, contraseña y saldo.
 - **Más:** registro de actividad, sugerencias ya revisadas y «Empezar una partida nueva» (solo dueño).
 - **Atajos en la app:** al abrir cualquier mercado, el staff ve un recuadro «Solo tú ves esto» para resolverlo, cerrarlo o editarlo
@@ -137,7 +137,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…015). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…017). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -163,6 +163,8 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 013 | Liquidez inicial 1200 → 2000 (calibrada para 30-40 jugadores) |
 | 014 | Mercados de varias opciones: arranque justo 1/N por opción (sin ganancia segura «No en todas») |
 | 015 | Lista de invitados + compuerta de registro (`invited_emails`, `enforce_invite`, RPC de gestión del dueño) |
+| 016 | Un moderador solo cierra, edita y resuelve los mercados que él creó (`resolve_market`, `staff_update_market`) |
+| 017 | Horas guardadas según el orden real de ejecución (`clock_timestamp()` en operaciones, historial de precios y `resolved_at`) |
 
 ## Desarrollo
 

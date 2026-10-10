@@ -6,6 +6,7 @@ import { Countdown } from '../../components/Countdown'
 import MarketImage from '../../components/MarketImage'
 import { Skeleton } from '../../components/ui/Skeleton'
 import SuggestionsList from './SuggestionsList'
+import { useManage } from '../../hooks/useManage'
 import { useMarketActions } from './useMarketActions'
 
 const DAY = 24 * 3600e3
@@ -30,8 +31,11 @@ function SectionTitle({ icon: Icon, children, count, tone = 'text-gray-500' }) {
 
 /** Pantalla de inicio del panel: solo lo que hay que hacer ahora. */
 export default function TodayTab({ onGo }) {
-  const { items, marketsLoaded, pendingSuggestions, now } = useGame()
+  const { items: allItems, marketsLoaded, pendingSuggestions, now } = useGame()
+  const { canManageItem, isOwner } = useManage()
   const actions = useMarketActions()
+  // El moderador solo ve (y maneja) lo que él creó.
+  const items = allItems.filter(canManageItem)
 
   const pending = items.filter((i) => i.state === 'pending')
   const closingSoon = items
@@ -57,6 +61,10 @@ export default function TodayTab({ onGo }) {
         <Tile value={suggestions} label="Sugerencias" tone={suggestions ? 'bg-blue-50 border-blue-200 text-polyblue' : 'bg-white border-gray-200 text-gray-500'} />
         <Tile value={openCount} label="Abiertos" tone="bg-white border-gray-200 text-gray-700" onClick={() => onGo('markets')} />
       </div>
+
+      {!isOwner && (
+        <p className="text-xs text-gray-500 -mt-3">Como moderador, aquí ves y manejas solo los mercados que tú creaste.</p>
+      )}
 
       {allClear && (
         <div className="text-center bg-white rounded-3xl border border-gray-200 shadow-card py-9 px-5 animate-fade-in">

@@ -1,6 +1,7 @@
 import { CheckCircle, Lock, Pencil, RotateCcw, ShieldCheck, Trophy, XCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { sideLabel } from '../lib/format'
+import { useManage } from '../hooks/useManage'
 import { useMarketActions } from '../pages/admin/useMarketActions'
 
 /**
@@ -10,11 +11,14 @@ import { useMarketActions } from '../pages/admin/useMarketActions'
  */
 export default function StaffBar({ market = null, group = null }) {
   const { isStaff, isOwner } = useAuth()
+  const { canManage } = useManage()
   const actions = useMarketActions()
   if (!isStaff) return null
 
   const list = group || [market]
   const first = list[0]
+  // Un moderador solo ve los atajos en los mercados que él creó.
+  if (!canManage(first)) return null
   const unresolved = list.filter((m) => m.state !== 'resolved')
   const allResolved = unresolved.length === 0
   const anyOpen = list.some((m) => m.state === 'open')

@@ -164,10 +164,12 @@ for (let n = 0; n < OPS; n += 1) {
   const led = ledger.get(u.id)
   if (led.moves >= CFG.daily_limit - 2) continue
   const mid = pick(tradeMarkets)
+  const canBuy = led.cash >= CFG.min_trade // un jugador sin dinero solo puede vender
   const m = await readMarket(mid)
   const owned = { YES: getHold(u, mid, 'YES'), NO: getHold(u, mid, 'NO') }
   const canSell = owned.YES > 0 || owned.NO > 0
-  const doSell = canSell && rand() < 0.42
+  const doSell = canSell && (!canBuy || rand() < 0.42)
+  if (!canSell && !canBuy) continue
 
   if (!doSell) {
     const side = rand() < 0.5 ? 'YES' : 'NO'
@@ -563,7 +565,7 @@ for (const n of [2, 3, 4, 7]) {
 {
   // ya no existe la ganancia segura de «comprar No en todas las opciones»
   const gid = groupIds.slice(2, 5) // el grupo de 3
-  const u = players[0]
+  const u = admin // el dueño también juega y no gastó nada en el fuzz (los jugadores pueden haber quedado sin saldo)
   let cost = 0
   const sharesNo = []
   for (const id of gid) {

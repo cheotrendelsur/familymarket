@@ -250,6 +250,7 @@ console.log(`Operaciones: ${outcomes.buyOk} compras OK, ${outcomes.sellOk} venta
 
 // ---------- invariantes ----------
 console.log('\nInvariantes (todos los mercados de prueba):')
+const L0 = Number((await admin.from('game_settings').select('initial_liquidity').single()).data.initial_liquidity)
 let bad = 0
 for (const id of created) {
   const { data: m } = await admin.from('markets').select('yes_pool,no_pool,closed').eq('id', id).single()
@@ -259,9 +260,13 @@ for (const id of created) {
     const { data } = await pl.c.from('shares').select('side,count').eq('market_id', id)
     ;(data || []).forEach((r) => (r.side === 'YES' ? (sy += Number(r.count)) : (sn += Number(r.count))))
   }
-  const diff = Math.abs(Number(m.yes_pool) + sy - (Number(m.no_pool) + sn))
+  // Las piscinas iniciales salen del primer punto del historial (en mercados de varias opciones no son 50/50).
+  const { data: h0 } = await admin.from('market_prices_history').select('yes_pool,no_pool').eq('market_id', id).order('created_at', { ascending: true }).limit(1).single()
+  const y0 = Number(h0.yes_pool)
+  const n0 = Number(h0.no_pool)
+  const diff = Math.abs(Number(m.yes_pool) + sy - y0 - (Number(m.no_pool) + sn - n0))
   const k = Number(m.yes_pool) * Number(m.no_pool)
-  if (diff > 1e-3 || Math.abs(k - 1440000) / 1440000 > 1e-7) {
+  if (diff > 1e-3 || Math.abs(k - y0 * n0) / (y0 * n0) > 1e-7 || Math.abs(y0 * n0 - L0 * L0) / (L0 * L0) > 1e-6) {
     bad += 1
     console.log(`  ❌ mercado ${id.slice(0, 8)}: diff tokens=${diff.toExponential(2)} k=${k}`)
   }

@@ -205,3 +205,29 @@ Ver README → «Cómo entra la gente». Pruebas: `loadtest.mjs access` (13 veri
 rechazado con contraseña, con permiso de contraseña sí, Gmail con otros puntos reconocido, perfil nace con $1000 sin nombre ni permisos), seguridad
 (jugador normal no puede usar las RPC de invitaciones ni leer la tabla), `tests/ui-auth.test.jsx` (Google, error de «no invitado», aviso de visor interno,
 panel de invitaciones) y `tests/ui-onboarding.test.jsx` (alta real: rechazado sin invitación, aceptado tras invitar).
+
+
+## Moderadores: solo lo que ellos crearon (migración 016)
+`resolve_market` y `staff_update_market` (editar y cerrar apuestas con `closes_at`) rechazan a un moderador sobre un mercado que no creó
+(«Solo puedes resolver / editar o cerrar los mercados que tú creaste»). Resolver también cierra el mercado, por eso la regla cubre las dos. Los
+grupos se crean completos con el mismo autor, así que valen igual. El dueño no tiene restricción. En el panel, un moderador ve solo sus mercados
+(Hoy, Mercados, insignia de pendientes) y los atajos «Solo tú ves esto» salen solo en los suyos. Pruebas: `loadtest.mjs` sección «MODERADOR»
+(10 verificaciones: rechazos sobre mercados y grupos del dueño, mercado intacto, éxito sobre los propios) y `tests/ui-mod-own.test.jsx`.
+
+## Horas en orden real de ejecución (migración 017)
+Una prueba de concurrencia («el admin resuelve mientras 6 jugadores compran y venden») falló una vez por culpa de una prueba que comparaba horas del
+CLIENTE (con la latencia de red de un VPN una respuesta puede llegar tarde aunque la operación se haya ejecutado antes de resolver). Revisándola se vio
+un detalle real: `now()` guarda la hora en que EMPEZÓ la transacción, no la de cuando consiguió el candado del mercado, así que una operación podía quedar
+registrada con una hora unos milisegundos «posterior» a la resolución, o dos operaciones del mismo mercado en orden cambiado en el historial de
+precios. El dinero nunca estuvo en riesgo (todo se serializa por el candado del mercado y la prueba de saldos exactos pasó siempre), pero se corrigió:
+`created_at` de `transactions`, `transaction_logs` y `market_prices_history` y `resolved_at` usan `clock_timestamp()` (hora real al insertar, ya con el
+candado tomado). La prueba ahora verifica en el servidor que ninguna compra/venta tiene hora posterior a `resolved_at`.
+
+## Ensayo con 40 jugadores simultáneos (`scripts/simulate.mjs`)
+40 cuentas sondeando precios, ranking y movimientos como la app real, operando cada ~35 s, una «estampida» (40 compras en ~3 s sobre un mercado nuevo) y
+una resolución en medio. Resultado en el servidor (registros de Supabase de esa ventana): **2,065 peticiones a la API, 2,064 con 200 y 1 con 400 (un rechazo
+esperado por cambio de precio), 0 errores 5xx, 0 errores de base de datos, 0 bloqueos mutuos**; tiempo de proceso en el servidor 8 ms de media (compra 15 ms;
+el mayor valor aislado fue ~0.5 s). Las latencias de varios segundos que reporta el script son de la red del equipo de pruebas (salía por un VPN), no del
+servidor. Después de la carga, comprobación directa en SQL: todos los mercados conservan k = yes·no (error 1e-13), las acciones se conservan (error de
+redondeo 2e-6, descontando el arranque desigual de los mercados de varias opciones), el saldo de las 41 cuentas coincide con su libro de operaciones
+(diferencia 0.0000), sin saldos ni acciones negativos y con tantas filas de `transactions` como de `transaction_logs`.
