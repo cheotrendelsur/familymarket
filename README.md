@@ -44,8 +44,8 @@ leer un mercado, comprar, ver cómo el precio se mueve y vender, «Reintentar al
 de victoria y confeti), ranking y perfiles, y moverse por la barra de abajo (7 misiones).
 
 - **Según el rol:** el **jugador** ve el tutorial de jugador; el **moderador** ve ese mismo + una misión extra de moderación (publicar una
-  sugerencia y resolver un mercado, 8 misiones); el **dueño** no recibe tutorial (sabe operar el panel). Los moderadores se nombran a mano
-  antes de empezar, así que el tutorial de cada quien ya sale con su rol.
+  sugerencia y resolver un mercado, 8 misiones); el **dueño** no recibe tutorial (sabe operar el panel). Un moderador nuevo ve su misión extra si lo nombras antes de su
+  primera entrada; si ya hizo el tutorial como jugador, la ve al repetirlo desde Portafolio → Preferencias → «Ver el tutorial otra vez».
 - El «ya lo vio» se guarda en el servidor (`profiles.tour_completed_at`, RPC `complete_tour`, migración 012): vale en cualquier celular y no se repite.
 - Se puede volver a ver en **Portafolio → Preferencias → «Ver el tutorial otra vez»** (en ese modo no cambia nada del servidor).
 - Para previsualizarlo sin tocar datos: `npm run dev` y `http://localhost:5173/?mock=1&role=player&tour=1` (`role=mod` para el de moderador).
