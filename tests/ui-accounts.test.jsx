@@ -139,6 +139,20 @@ describe('Apertura programada', () => {
 })
 
 describe('Premio por mercado sorpresa', () => {
+  it('quien no pudo participar ve la apuesta que le ocultaron y el dinero que ganó, y cierra la tarjeta', async () => {
+    const { screen, fireEvent, waitFor, cleanup } = await boot('/?mock=1&role=player&reward=1')
+    const card = await screen.findByTestId('reward-card', {}, T)
+    expect(screen.getByLabelText('¡Premio sorpresa!')).toBeTruthy()
+    expect(card.textContent).toMatch(/La apuesta que te ocultaron/i)
+    expect(screen.getByText('¿Quién llorará primero en la boda?')).toBeTruthy() // la apuesta que le ocultaron
+    expect(card.textContent).toMatch(/Resultado: ganó «Sí»/)
+    expect(card.textContent).toMatch(/Se movieron \$1,000\.00 en esa apuesta\. Te tocó el 2 % de ese dinero\./)
+    await waitFor(() => expect(screen.getByTestId('reward-amount').textContent).toBe('+$20.00'), { timeout: 8000 }) // el dinero sube animado
+    fireEvent.click(screen.getByRole('button', { name: /¡Genial!/ }))
+    await waitFor(() => expect(screen.queryByTestId('reward-card')).toBeNull(), T)
+    cleanup()
+  })
+
   it('el dueño ajusta el porcentaje y al ocultar un mercado se avisa del premio', async () => {
     const { screen, fireEvent, waitFor, cleanup } = await boot('/admin?mock=1&role=owner')
     fireEvent.click(await screen.findByRole('button', { name: 'Más' }, T))

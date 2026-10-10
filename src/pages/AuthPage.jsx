@@ -409,7 +409,7 @@ export default function AuthPage() {
                   )}
                 </div>
               )}
-              <button type="button" onClick={() => switchMode('signup')} className="mt-4 w-full text-polyblue font-bold">
+              <button type="button" onClick={() => switchMode('signup')} className="mt-2 w-full min-h-[44px] text-polyblue font-bold">
                 ¿Primera vez? Crea tu cuenta
               </button>
             </>
@@ -499,10 +499,10 @@ export default function AuthPage() {
                   )}
                 </button>
               </form>
-              <button type="button" onClick={() => switchMode('login')} className="mt-5 w-full text-polyblue font-bold">
+              <button type="button" onClick={() => switchMode('login')} className="mt-3 w-full min-h-[44px] text-polyblue font-bold">
                 ¿Ya tienes cuenta? Entra aquí
               </button>
-              <button type="button" onClick={() => openHelp()} className="mt-2 w-full text-sm font-semibold text-gray-500">
+              <button type="button" onClick={() => openHelp()} className="mt-1 w-full min-h-[44px] text-sm font-semibold text-gray-500">
                 ¿Ya jugabas y olvidaste tu usuario? Pide ayuda
               </button>
             </>

@@ -148,7 +148,7 @@ export default function NetWorthChart({ leaderboard, meId }) {
                 key={p.id}
                 onClick={() => setHidden((h) => ({ ...h, [p.id]: !h[p.id] }))}
                 aria-pressed={!off}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-opacity ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-opacity ${
                   off ? 'opacity-40 border-gray-200 text-gray-500' : 'border-gray-200 text-gray-700 bg-white'
                 }`}
               >

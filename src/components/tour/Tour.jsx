@@ -142,7 +142,7 @@ export default function Tour({ mode = 'first', onFinish, onSkip }) {
               <span key={starKey} className="flex items-center gap-1 bg-white/15 rounded-full px-3 py-1 text-sm font-extrabold animate-pop" aria-label={`${stars} estrellas`}>
                 <Star size={15} className="text-amber-300" fill="#FCD34D" /> {stars}
               </span>
-              <button onClick={skip} className="text-xs font-bold text-white/70 hover:text-white px-2 py-1.5 rounded-lg" aria-label="Saltar el tutorial">
+              <button onClick={skip} className="text-xs font-bold text-white/70 hover:text-white px-3 py-3 -my-2 rounded-lg" aria-label="Saltar el tutorial">
                 {mode === 'replay' ? <X size={20} /> : 'Saltar'}
               </button>
             </div>

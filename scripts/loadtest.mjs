@@ -1164,6 +1164,8 @@ async function phaseReward(U, C) {
       await call(P1, 'buy_shares', { p_market_id: m, p_side: 'YES', p_investment: 100 })
       await call(P2, 'buy_shares', { p_market_id: m, p_side: 'NO', p_investment: 200 })
       await call(P3, 'buy_shares', { p_market_id: m, p_side: 'YES', p_investment: 50 })
+      const before = (await call(H1.c, 'get_session_state')).data
+      check(`${label}: antes de resolver, los ocultos no reciben ningún aviso del mercado`, !(before?.notifications || []).some((n) => n.payload?.market_id === m || n.market_id === m), JSON.stringify(before?.notifications))
       const res = await call(admin, 'resolve_market', { p_market_id: m, p_outcome: 'YES' })
       check(`${label}: se resuelve y devuelve el premio calculado`, !res.error && Math.abs(Number(res.data?.reward_each) - expectEach) < 1e-4 && Number(res.data?.volume) === expectVolume, JSON.stringify(res.data) + msg(res))
       return { m, b8, b9 }
@@ -1176,7 +1178,10 @@ async function phaseReward(U, C) {
     check('queda registrado como «premio» (no como victoria) en su historial', tx.data?.length === 1 && tx.data[0].type === 'REWARD' && Number(tx.data[0].total_cost) === 3.5, JSON.stringify(tx.data))
     const st = (await call(H1.c, 'get_session_state')).data
     const note = st?.notifications?.find((n) => n.kind === 'HIDDEN_REWARD')
-    check('recibe un aviso de premio SIN revelar la pregunta del mercado', !!note && Number(note.payload.amount) === 3.5 && !('question' in note.payload) && note.market_id === null, JSON.stringify(note))
+    check('recibe un aviso de premio CON la apuesta que le ocultaron (pregunta, resultado, volumen y reparto)',
+      !!note && Number(note.payload.amount) === 3.5 && note.payload.question === '[TEST] Sorpresa 2 ocultos' && note.payload.outcome === 'YES'
+        && Number(note.payload.volume) === 350 && Number(note.payload.people) === 2 && Number(note.payload.pct) === 0.02 && note.payload.mode === 'shared'
+        && note.payload.market_id === a.m && note.market_id === null, JSON.stringify(note))
     const pf = (await call(H1.c, 'get_player_profile', { p_user_id: H1.id })).data
     check('el premio no cuenta como acierto en sus estadísticas', pf?.wins === 0 && pf?.losses === 0, JSON.stringify(pf))
     // deshacer la resolución quita el premio (en silencio)

@@ -281,5 +281,24 @@ Razones de «2 %, bolsa repartida, tope $40»: (a) 2 % = la comisión del juego,
 se mantienen hasta resolver; (b) repartida entre las personas ocultas evita que ocultar a muchos dispare la inflación; (c) el tope evita que un mercado enorme regale demasiado a quien no jugó;
 (d) quien no participa evita pagar comisiones y perder, así que el premio es un gesto, no un sueldo. Alternativas ajustables sin tocar código (Admin → Más): 1 % (más discreto), 3 % (más generoso), o
 modo «cada una» (cada persona oculta cobra el porcentaje completo).
-Pruebas: `loadtest.mjs reward` (27): reparto entre 2 y 1 persona, modo «cada una», tope, sin apuestas y porcentaje 0 no pagan, el dueño no cobra, el aviso no revela la pregunta, no cuenta como
+Pruebas: `loadtest.mjs reward` (27): reparto entre 2 y 1 persona, modo «cada una», tope, sin apuestas y porcentaje 0 no pagan, el dueño no cobra, el aviso trae la apuesta oculta (migración 023), no cuenta como
 acierto, deshacer la resolución y anular el mercado lo devuelven en silencio, y la configuración real se restaura.
+
+
+# Fase 5 · Aviso animado del premio sorpresa y revisión en iPhone / Android (octubre 2026)
+
+## Aviso del premio (migración 023)
+Al resolverse un mercado sorpresa, quien no pudo participar recibe una tarjeta animada (regalo, lluvia de monedas, confeti, cifra que sube, vibración y sonido opcionales) con **la apuesta que le ocultaron**
+(pregunta), el resultado, el dinero total que se movió y cómo se repartió la bolsa. Antes de resolver no hay aviso ni rastro del mercado. Verificado en el servidor real con transacciones que se deshacen
+(sin dejar datos): 2 ocultos (3.5 c/u), 1 oculto (7), modo «cada una», tope, sin apuestas = sin premio, el dueño no cobra, el oculto no ve el mercado ni recibe aviso de ganar/perder, deshacer la
+resolución y anular lo devuelven en silencio y re-resolver paga una sola vez. UI: `tests/ui-accounts.test.jsx` (tarjeta con pregunta, resultado, +$20.00 animado y cierre). Vista previa:
+`npm run dev` → `/?mock=1&role=player&reward=1`.
+
+## iPhone y Android
+Chrome emulando 7 pantallas (iPhone SE 1.ª gen 320 px, iPhone SE 375, iPhone 15, iPhone Pro Max, Android 360×640 y 360×800, Pixel 8) con agente de usuario de Safari iOS y de Chrome Android, 16 pantallas
+cada una (acceso, registro, inicio, mercado, grupo, ranking, portafolio, sugerir, recuerdos, tutorial, aviso del premio y las 5 pestañas del panel): **sin desbordes horizontales, sin campos con letra < 16 px
+(iOS no hace zoom al escribir), sin errores de consola**; botones de texto pequeños agrandados a ≥ 44 px donde importa (pantalla de acceso, ayuda, saltar tutorial, filas de opciones). Flujo táctil real
+(toques, teclado) en 3 pantallas: abrir hoja de compra, escribir monto, comprar (el saldo baja) y cerrar el aviso del premio: 36/36. Compatibilidad estática: el JS y el CSS compilados pasan `esbuild
+--target=safari14,chrome80`; no hay APIs sin respaldo (WebP→JPEG en Safari, portapapeles con alternativa, `randomUUID` con alternativa, `vibrate` y `AudioContext` con respaldo, `100dvh` con alternativa,
+`safe-area-inset`, `viewport-fit=cover`, iconos `apple-touch-icon`, manifest PWA). Límite honesto: se probó con Chrome emulando teléfonos, no con un iPhone físico (Safari de verdad usa otro motor);
+por eso se verificó además la sintaxis y las APIs contra Safari 14.

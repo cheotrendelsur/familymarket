@@ -811,6 +811,8 @@ window.__mock = {
   groupWin: () => notify('MARKET_WON', { question: 'Mamá', group_topic: '¿Quién comerá más pizza esta noche?', outcome: 'YES', payout: 80, invested: 38, profit: 42 }, 'pz1'),
   reopened: () => notify('MARKET_REOPENED', { question: '¿Ganó Venezuela el amistoso?', reversed: 150 }),
   cancelled: () => notify('MARKET_CANCELLED', { question: '¿Se acabó el hielo?', refunded: 25 }),
+  reward: (amount = 20) =>
+    notify('HIDDEN_REWARD', { amount, volume: amount * 50, people: 1, pct: 0.02, mode: 'shared', question: '¿Quién llorará primero en la boda?', outcome: 'YES', market_id: 'rain' }),
   approved: () => notify('SUGGESTION_APPROVED', { question: '¿Cantamos en el carro?' }, 'rain'),
   rejected: () => notify('SUGGESTION_REJECTED', { question: '¿Cantamos en el carro?', reason: 'Ya existe uno parecido' }),
   resolve: (id, outcome = 'YES') => handlers.resolve_market({ p_market_id: id, p_outcome: outcome }),
@@ -824,3 +826,5 @@ window.__mock = {
   },
   state: () => ({ markets, shares: [...shares], notifications }),
 }
+// ?reward=1 -> arranca con el aviso del premio por mercado sorpresa (vista previa / pruebas)
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('reward')) window.__mock.reward()

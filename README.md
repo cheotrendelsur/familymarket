@@ -89,7 +89,7 @@ Cuando se oculta un mercado a alguien («Más opciones → Mercado sorpresa»), 
   2 % es justo la comisión del juego: la bolsa equivale a lo que se «quemó» en comisiones por ese mercado, así que casi no crea dinero nuevo.
   Ejemplos: $1,000 apostados y 1 oculto → $20; $3,000 y 1 oculto → $40 (tope); $3,000 y 3 ocultos → $20 cada uno.
 - Ajustable por el dueño en **Admin → Más → Premio por mercado sorpresa**: porcentaje (0–20 %), tope por persona y modo («se reparte» o «cada una» = cada persona recibe el porcentaje completo).
-- Se paga dentro de la misma operación que resuelve el mercado (todo o nada); queda como «Premio» en su historial (no cuenta como acierto) y recibe un aviso **sin revelar la pregunta**.
+- Se paga dentro de la misma operación que resuelve el mercado (todo o nada); queda como «Premio» en su historial (no cuenta como acierto) y recibe un **aviso animado** (tarjeta con regalo, lluvia de monedas, confeti y el dinero subiendo) que le muestra **la apuesta que le ocultaron** (la pregunta), el resultado, cuánto dinero se movió y cómo se repartió la bolsa. Solo aparece cuando el mercado se resuelve y el premio ya está sumado a su saldo; antes de eso no sabe nada del mercado.
   Si se deshace la resolución o se anula el mercado, el premio se devuelve en silencio. No cobran el dueño, el creador del mercado ni jugadores deshabilitados.
 
 ### Panel de administración (dueño y moderadores)
@@ -157,7 +157,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…022). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…023). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -190,6 +190,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 020 | Recuperación de cuentas (pedir ayuda, restablecer pasa a usuario, cambiar mi contraseña), **deshabilitar / rehabilitar / eliminar** jugadores, aviso de nombres parecidos |
 | 021 | **Apertura programada** (`markets.opens_at`) + cuenta deshabilitada no puede operar (`_assert_active` en comprar/vender) |
 | 022 | **Premio por mercado sorpresa** (`REWARD`, aviso `HIDDEN_REWARD`, ajustes en `game_settings`) |
+| 023 | El aviso del premio ahora trae la apuesta oculta (pregunta, resultado, volumen, personas y porcentaje) para mostrarla en la tarjeta animada |
 
 ## Desarrollo
 

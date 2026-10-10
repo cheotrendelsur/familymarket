@@ -117,7 +117,7 @@ export const OptionRow = memo(function OptionRow({ market, onTrade, onOpen, rank
   const upcoming = market.state === 'upcoming'
   return (
     <div className="flex items-center gap-2 py-2">
-      <button onClick={onOpen} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+      <button onClick={onOpen} className="flex items-center gap-2 min-w-0 flex-1 text-left py-2 -my-2">
         {rank !== undefined && <span className="text-xs font-bold text-gray-300 w-3 flex-shrink-0">{rank}</span>}
         <span className="font-medium text-[14px] text-gray-800 truncate">{market.question}</span>
       </button>

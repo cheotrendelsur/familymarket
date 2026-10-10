@@ -22,7 +22,7 @@ export function RangeTabs({ value, onChange }) {
           role="tab"
           aria-selected={value === r.id}
           onClick={() => onChange(r.id)}
-          className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${
+          className={`px-3.5 py-2 text-xs font-bold rounded-full transition-all ${
             value === r.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
           }`}
         >

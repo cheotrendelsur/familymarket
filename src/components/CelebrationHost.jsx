@@ -46,9 +46,9 @@ function Sparkles() {
   ))
 }
 
-function Shell({ closing, children, tone = 'win' }) {
+function Shell({ closing, children, tone = 'win', behind = null }) {
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-5" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-5 overflow-hidden" role="dialog" aria-modal="true">
       <div
         className={`absolute inset-0 backdrop-blur-sm ${closing ? 'animate-fade-out' : 'animate-fade-in'} ${
           tone === 'win' ? 'bg-slate-900/70' : 'bg-slate-900/60'
@@ -57,7 +57,36 @@ function Shell({ closing, children, tone = 'win' }) {
       {tone === 'win' && (
         <div className="absolute w-[560px] h-[560px] max-w-[160vw] max-h-[160vw] rays animate-spin-slow pointer-events-none" aria-hidden="true" />
       )}
+      {behind}
       <div className={`relative w-full max-w-sm ${closing ? 'animate-card-out' : 'animate-card-in'}`}>{children}</div>
+    </div>
+  )
+}
+
+/** Monedas que caen detrás de la tarjeta (se apagan con «reducir movimiento»). */
+function CoinRain() {
+  const coins = [
+    { l: 6, d: 0, t: 3.6, e: '🪙' },
+    { l: 17, d: 1.1, t: 4.4, e: '💰' },
+    { l: 28, d: 0.5, t: 3.9, e: '🪙' },
+    { l: 39, d: 1.9, t: 4.8, e: '🪙' },
+    { l: 50, d: 0.2, t: 4.1, e: '💵' },
+    { l: 61, d: 1.4, t: 3.7, e: '🪙' },
+    { l: 72, d: 0.8, t: 4.6, e: '💰' },
+    { l: 83, d: 2.2, t: 4.0, e: '🪙' },
+    { l: 93, d: 0.4, t: 4.3, e: '💵' },
+  ]
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none motion-reduce:hidden" aria-hidden="true">
+      {coins.map((c, i) => (
+        <span
+          key={i}
+          className="absolute -top-8 text-2xl animate-coin-fall select-none"
+          style={{ left: `${c.l}%`, animationDelay: `${c.d}s`, animationDuration: `${c.t}s` }}
+        >
+          {c.e}
+        </span>
+      ))}
     </div>
   )
 }
@@ -80,9 +109,11 @@ function WinCard({ n, index, total, onClose, closing }) {
   useEffect(() => {
     let stop = () => {}
     if (happy) {
-      fireWinConfetti().then((s) => {
-        stop = s
-      })
+      fireWinConfetti()
+        .then((s) => {
+          stop = s
+        })
+        .catch(() => {})
     }
     haptic(HAPTIC.win)
     playSound(happy ? 'win' : 'success')
@@ -181,13 +212,99 @@ function LossCard({ n, index, total, onClose, closing }) {
   )
 }
 
+/** Premio para quien no pudo participar en un mercado sorpresa: se muestra al resolverse, con la apuesta que le ocultaron. */
+function RewardCard({ n, index, total, onClose, closing }) {
+  const p = n.payload || {}
+  const amount = Number(p.amount) || 0
+  const volume = Number(p.volume) || 0
+  const people = Math.max(1, Number(p.people) || 1)
+  const pct = Number(p.pct) || 0
+  const each = p.mode === 'each'
+  const pctText = `${Math.round(pct * 1000) / 10} %`
+  const raw = each ? volume * pct : (volume * pct) / people
+  const capped = pct > 0 && raw - amount > 0.01
+  const sharedText =
+    !each && people > 1
+      ? `El ${pctText} de ese dinero se repartió entre ${people} personas.`
+      : pct > 0
+        ? `Te tocó el ${pctText} de ese dinero.`
+        : ''
+
+  useEffect(() => {
+    let stop = () => {}
+    fireWinConfetti()
+      .then((s) => {
+        stop = s
+      })
+      .catch(() => {})
+    haptic(HAPTIC.win)
+    playSound('win')
+    return () => stop()
+  }, [])
+
+  return (
+    <Shell closing={closing} behind={<CoinRain />}>
+      <div
+        data-testid="reward-card"
+        className="relative bg-gradient-to-b from-white to-amber-50 rounded-[28px] shadow-2xl px-5 pt-12 pb-5 text-center"
+      >
+        <Counter index={index} total={total} />
+        <Sparkles />
+        <div className="absolute -top-11 left-1/2 -translate-x-1/2">
+          <div className="relative">
+            <span className="absolute inset-0 rounded-full bg-amber-300 animate-pulse-ring" />
+            <div className="relative w-[88px] h-[88px] rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 flex items-center justify-center text-5xl shadow-xl ring-4 ring-white animate-pop">
+              <span className="animate-wiggle inline-block">🎁</span>
+            </div>
+          </div>
+        </div>
+
+        <h2 className="text-[30px] leading-tight font-extrabold text-gray-900 mt-2">
+          <StaggerText text="¡Premio sorpresa!" />
+        </h2>
+        <p className="text-sm text-gray-500 mt-1 leading-snug animate-slide-up [@media(max-height:640px)]:hidden" style={{ animationDelay: '0.5s' }}>
+          Hicieron una apuesta sorpresa y a ti te la ocultaron. Por no poder participar, ganaste:
+        </p>
+
+        <div className="mt-3 rounded-2xl bg-white border border-amber-100 shadow-inner py-3">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Ganaste</p>
+          <p className="text-[42px] leading-none font-black text-polygreen tabular-nums mt-1" data-testid="reward-amount">
+            <AnimatedNumber value={amount} from={0} duration={1500} delay={600} format={(v) => `+${money(v)}`} />
+          </p>
+        </div>
+
+        {p.question && (
+          <div
+            className="mt-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left animate-slide-up"
+            style={{ animationDelay: '1s' }}
+          >
+            <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">🤫 La apuesta que te ocultaron</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1 leading-snug line-clamp-4">{titleOf(p)}</p>
+            {p.outcome && <p className="text-xs font-semibold text-gray-500 mt-1.5">Resultado: ganó «{sideLabel(p.outcome)}»</p>}
+          </div>
+        )}
+
+        {volume > 0 && (
+          <p className="text-xs text-gray-500 mt-3 leading-snug animate-slide-up" style={{ animationDelay: '1.2s' }}>
+            Se movieron {money(volume)} en esa apuesta. {sharedText}
+            {capped ? ' Se aplicó el máximo por persona.' : ''}
+          </p>
+        )}
+
+        <button
+          autoFocus
+          onClick={onClose}
+          className="mt-4 w-full py-3.5 rounded-2xl bg-polygreen hover:bg-green-700 text-white font-extrabold text-lg shadow-lg shadow-green-500/30 tap-feedback animate-slide-up"
+          style={{ animationDelay: '0.9s' }}
+        >
+          {total > 1 && index < total - 1 ? 'Siguiente' : '¡Genial! 🎁'}
+        </button>
+      </div>
+    </Shell>
+  )
+}
+
 const INFO = {
-  HIDDEN_REWARD: {
-    emoji: '🎁',
-    title: '¡Premio por mercado sorpresa!',
-    text: (p) => `Hubo un mercado sorpresa en el que no pudiste participar. Como compensación recibiste ${money(p.amount)}.`,
-    button: '¡Genial!',
-  },
   MARKET_REOPENED: {
     emoji: '↩️',
     title: 'Resolución deshecha',
@@ -225,7 +342,7 @@ const INFO = {
 function InfoCard({ n, index, total, onClose, onOpenMarket, closing }) {
   const info = INFO[n.kind]
   const p = n.payload || {}
-  const approved = n.kind === 'SUGGESTION_APPROVED' || n.kind === 'HIDDEN_REWARD'
+  const approved = n.kind === 'SUGGESTION_APPROVED'
 
   useEffect(() => {
     if (approved) {
@@ -318,6 +435,8 @@ export default function CelebrationHost() {
       <WinCard key={current.id} {...props} />
     ) : current.kind === 'MARKET_LOST' ? (
       <LossCard key={current.id} {...props} />
+    ) : current.kind === 'HIDDEN_REWARD' ? (
+      <RewardCard key={current.id} {...props} />
     ) : INFO[current.kind] ? (
       <InfoCard key={current.id} {...props} />
     ) : null,

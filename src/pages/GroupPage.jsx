@@ -29,12 +29,12 @@ function OptionLine({ market, rank, onTrade, onOpen, mine }) {
     <div className="p-4">
       <div className="flex items-center gap-3">
         <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-extrabold flex items-center justify-center flex-shrink-0">{rank}</span>
-        <button onClick={onOpen} className="flex-1 min-w-0 text-left">
+        <button onClick={onOpen} className="flex-1 min-w-0 text-left py-2 -my-2">
           <span className="font-semibold text-gray-900 block truncate">{market.question}</span>
           {mine && <span className="text-[11px] font-bold text-polyblue">Tienes acciones aquí</span>}
         </button>
         <span className="font-black text-xl tabular-nums">{Math.round(yes * 100)}%</span>
-        <button onClick={onOpen} aria-label="Ver detalle" className="p-1 text-gray-300">
+        <button onClick={onOpen} aria-label="Ver detalle" className="p-2 -m-1 text-gray-300">
           <ChevronRight size={18} />
         </button>
       </div>

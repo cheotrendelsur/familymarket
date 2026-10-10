@@ -17,6 +17,8 @@ export const setHapticsEnabled = (v) => store.set('fm_haptics', !!v)
 export function haptic(pattern = 12) {
   if (!hapticsEnabled()) return
   try {
+    // Chrome ignora (y avisa en consola) la vibración antes del primer toque; así no hay ruido
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return
     navigator.vibrate?.(pattern)
   } catch {
     /* no soportado (iOS Safari) */
