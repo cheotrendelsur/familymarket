@@ -100,10 +100,32 @@ export function useMarketActions() {
       try {
         await rpc('staff_update_market', {
           p_market_id: market.id,
-          p_patch: { closes_at: new Date(serverNow() - 2000).toISOString() },
+          p_patch: { closes_at: new Date(serverNow() - 2000).toISOString(), ...(market.state === 'upcoming' ? { opens_at: null } : {}) },
           p_apply_group: wholeGroup,
         })
         toast.success('Apuestas cerradas', { duration: 3500 })
+        after()
+        return true
+      } catch (err) {
+        toast.error(friendlyError(err), { duration: 6000 })
+        return false
+      }
+    },
+    [confirm, after]
+  )
+
+  /** Abre ya un mercado con apertura programada (un mercado, o todo su grupo). */
+  const openNow = useCallback(
+    async (market, wholeGroup = false) => {
+      const ok = await confirm({
+        title: 'Abrir ahora',
+        message: `«${wholeGroup ? market.group_topic : market.question}» se abrirá en este momento y los jugadores ya podrán apostar.`,
+        confirmText: 'Abrir ahora',
+      })
+      if (!ok) return false
+      try {
+        await rpc('staff_update_market', { p_market_id: market.id, p_patch: { opens_at: null }, p_apply_group: wholeGroup })
+        toast.success('Mercado abierto', { duration: 3500 })
         after()
         return true
       } catch (err) {
@@ -163,5 +185,5 @@ export function useMarketActions() {
 
   const editor = editing ? <EditSheet market={editing} onClose={() => setEditing(null)} onSaved={after} /> : null
 
-  return { resolve, resolveGroup, closeNow, annul, reopen, edit: setEditing, editor, after }
+  return { resolve, resolveGroup, closeNow, openNow, annul, reopen, edit: setEditing, editor, after }
 }

@@ -3,7 +3,7 @@
 //
 // Requiere usuarios de prueba (lt_00@... admin, lt_01..lt_13) creados aparte y un
 // archivo de credenciales fuera del repo:
-//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|feat|access|conc|all]
+//   LOADTEST_ENV=/ruta/testenv.json  node scripts/loadtest.mjs [sec|func|feat|access|accounts|schedule|reward|conc|all]
 // testenv.json: { "password": "...", "prefix": "lt_", "domain": "loadtest.invalid", "count": 14 }
 // =====================================================================
 import { createClient } from '@supabase/supabase-js'
@@ -156,6 +156,12 @@ async function phaseSecurity(U, C) {
     ['admin_recent_actions', { p_limit: 5 }],
     ['admin_list_invites', {}],
     ['admin_get_signup', {}],
+    ['admin_disable_player', { p_user_id: me.id }],
+    ['admin_enable_player', { p_user_id: me.id }],
+    ['admin_delete_player', { p_user_id: me.id }],
+    ['admin_list_help_requests', {}],
+    ['admin_handle_help_request', { p_id: 1 }],
+    ['admin_set_reward', { p_pct: 0.5, p_cap: 999, p_mode: 'each' }],
     ['admin_set_signup', { p_open: false, p_max: 1 }],
     ['admin_rotate_signup_code', {}],
     ['admin_invite_emails', { p_emails: ['intruso@example.com'], p_password_ok: true }],
@@ -179,6 +185,8 @@ async function phaseSecurity(U, C) {
   check('NO puede insertar mercados', !!w4.error)
   const w5 = await c.from('markets').update({ closed: true }).eq('id', fake)
   check('NO puede cerrar mercados', !!w5.error || true)
+  const hr = await c.from('help_requests').select('*')
+  check('no puede leer las solicitudes de ayuda directamente', !!hr.error || (hr.data?.length ?? 0) === 0)
   const sc = await c.from('signup_config').select('*')
   check('no puede leer el código de la familia directamente', !!sc.error || (sc.data?.length ?? 0) === 0)
   const inv = await c.from('invited_emails').select('*')
@@ -938,6 +946,294 @@ async function phaseAccess(U, C) {
   check('un Gmail escrito con otros puntos / +etiqueta se reconoce como el mismo invitado', !g1.error && !!g1.data?.session, g1.error?.message)
 }
 
+
+// =====================================================================
+async function phaseAccounts(U, C) {
+  section('CUENTAS · restablecer contraseña, ayuda, deshabilitar y eliminar')
+  const admin = C[0]
+  const anon = () => createClient(URL_, KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+  const pw = cfg.password
+  const tag = Math.random().toString(16).slice(2, 8)
+  const synth = (name) => `${name.toLowerCase()}@jugador.familymarket.invalid`
+  const info = (await call(admin, 'admin_get_signup')).data
+  const code = info.code
+  const signup = async (name) => {
+    const r = await anon().auth.signUp({ email: synth(name), password: pw, options: { data: { username: name, family_code: code } } })
+    return { id: r.data?.user?.id, session: r.data?.session, error: r.error }
+  }
+
+  // ---------- restablecer contraseña ----------
+  const legacy = U[12] // cuenta antigua: entra con un correo
+  const legacyClient = anon()
+  await legacyClient.auth.signInWithPassword({ email: legacy.email, password: pw }) // su sesión abierta antes de restablecer
+  const listed0 = (await call(admin, 'admin_list_players')).data || []
+  const row0 = listed0.find((x) => x.id === legacy.id)
+  check('el dueño ve cómo entra cada jugador (correo / usuario)', row0?.login_kind === 'correo' && /\*\*\*@/.test(row0?.email_hint || ''), JSON.stringify(row0))
+  const NEWPW = `Tmp-${tag}-x1`
+  const reset = await call(admin, 'admin_reset_password', { p_user_id: legacy.id, p_new_password: NEWPW })
+  check('restablecer contraseña de una cuenta con correo: pasa a entrar con usuario', !reset.error && reset.data?.converted === true && reset.data?.login_with_username === true, msg(reset))
+  const oldLogin = await anon().auth.signInWithPassword({ email: legacy.email, password: pw })
+  check('el correo y la contraseña de antes ya no sirven', !!oldLogin.error)
+  const username12 = 'lt_user_12'
+  const newLogin = await anon().auth.signInWithPassword({ email: synth(username12), password: NEWPW })
+  check('entra con su NOMBRE DE USUARIO y la contraseña nueva', !newLogin.error && !!newLogin.data?.session, newLogin.error?.message)
+  const staleRefresh = await legacyClient.auth.refreshSession()
+  check('su sesión anterior ya no se puede renovar (se cierra sola en unos minutos)', !!staleRefresh.error, staleRefresh.error?.message)
+  const me12 = mk(newLogin.data?.session?.access_token)
+  const prof12 = await me12.from('profiles').select('needs_password_change, username').single()
+  check('queda marcada con «contraseña temporal»', prof12.data?.needs_password_change === true && prof12.data?.username === username12, JSON.stringify(prof12.data))
+  const chg = await newLogin.data.session && (await anon().auth.signInWithPassword({ email: synth(username12), password: NEWPW }))
+  if (chg?.data?.session) {
+    const own = anon()
+    await own.auth.setSession({ access_token: chg.data.session.access_token, refresh_token: chg.data.session.refresh_token })
+    const upd = await own.auth.updateUser({ password: pw })
+    check('el propio jugador cambia su contraseña', !upd.error, upd.error?.message)
+    const pc = await call(mk(chg.data.session.access_token), 'password_changed')
+    check('y se quita el aviso de contraseña temporal', !pc.error, msg(pc))
+    const back = await anon().auth.signInWithPassword({ email: synth(username12), password: pw })
+    check('entra con la contraseña que eligió', !back.error, back.error?.message)
+  }
+  const shortPw = await call(admin, 'admin_reset_password', { p_user_id: U[11].id, p_new_password: '123' })
+  check('rechaza contraseñas de menos de 6 caracteres', !!shortPw.error, msg(shortPw))
+  const noOwner = await call(C[3], 'admin_reset_password', { p_user_id: U[4].id, p_new_password: 'abcdef12' })
+  check('un jugador NO puede restablecer contraseñas', !!noOwner.error, msg(noOwner))
+
+  // ---------- pedir ayuda sin cuenta ----------
+  const helpName = `lt_user_09`
+  const h1 = await anon().rpc('request_help', { p_name: helpName, p_note: 'soy yo' })
+  const h1b = await anon().rpc('request_help', { p_name: helpName.toUpperCase() })
+  const hBad = await anon().rpc('request_help', { p_name: 'a' })
+  check('cualquiera puede pedir ayuda sin cuenta; repetirlo no duplica; un nombre muy corto se rechaza',
+    h1.data?.ok === true && h1b.data?.already === true && hBad.data?.ok === false, JSON.stringify([h1.data, h1b.data, hBad.data]))
+  const reqs = (await call(admin, 'admin_list_help_requests')).data || []
+  const mine = reqs.find((r) => r.name.toLowerCase() === helpName)
+  check('el dueño ve la solicitud con los jugadores que podrían ser', !!mine && mine.matches?.some((m) => m.username === 'lt_user_09'), JSON.stringify(mine))
+  const handled = await call(admin, 'admin_handle_help_request', { p_id: mine?.id })
+  const reqs2 = (await call(admin, 'admin_list_help_requests')).data || []
+  check('al atenderla desaparece de la lista', !handled.error && !reqs2.some((r) => r.id === mine?.id))
+  await anon().rpc('request_help', { p_name: 'lt_user_13' })
+  await call(admin, 'admin_reset_password', { p_user_id: U[13].id, p_new_password: 'Abcdef123' })
+  const reqs3 = (await call(admin, 'admin_list_help_requests')).data || []
+  check('al restablecer la contraseña de esa persona, su solicitud se marca como atendida', !reqs3.some((r) => r.name.toLowerCase() === 'lt_user_13'))
+
+  // ---------- nombres parecidos ----------
+  const base = `lt_s${tag}`
+  const sA = await signup(base)
+  check('jugador nuevo con código (para las pruebas de duplicados)', !sA.error && !!sA.session, sA.error?.message)
+  const sim = await anon().rpc('similar_players', { p_code: code, p_username: `${base}2` })
+  const simNoCode = await anon().rpc('similar_players', { p_code: 'AAAAAAAA', p_username: `${base}2` })
+  const simShort = await anon().rpc('similar_players', { p_code: code, p_username: 'zz' })
+  check('al registrarse con un nombre parecido avisa del jugador que ya existe',
+    Array.isArray(sim.data) && sim.data.includes(base) && Array.isArray(simNoCode.data) && simNoCode.data.length === 0 && simShort.data?.length === 0, JSON.stringify([sim.data, simNoCode.data]))
+
+  // ---------- deshabilitar ----------
+  const countBeforeB = (await call(admin, 'admin_get_signup')).data.players
+  const nameB = `lt_d${tag}a`
+  const pB = await signup(nameB)
+  const Bc = mk(pB.session?.access_token)
+  const mkt = (await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado del deshabilitado' })).data
+  await call(Bc, 'buy_shares', { p_market_id: mkt, p_side: 'YES', p_investment: 25 })
+  const lbBefore = (await call(Bc, 'get_leaderboard')).data || []
+  check('el jugador aparece en el ranking antes de deshabilitarlo', lbBefore.some((r) => r.user_id === pB.id))
+  const noSelf = await call(admin, 'admin_disable_player', { p_user_id: U[0].id })
+  check('no se puede deshabilitar al dueño', !!noSelf.error, msg(noSelf))
+  const dis = await call(admin, 'admin_disable_player', { p_user_id: pB.id })
+  check('el dueño deshabilita al jugador (su nombre queda libre)', !dis.error && dis.data?.username === `${nameB}_off` && dis.data?.original_username === nameB, msg(dis))
+  const lbAfter = (await call(admin, 'get_leaderboard')).data || []
+  check('ya NO aparece en el ranking', !lbAfter.some((r) => r.user_id === pB.id || r.username === nameB || r.username === `${nameB}_off`))
+  const prof = await call(admin, 'get_player_profile', { p_user_id: pB.id })
+  check('su perfil ya no se puede ver', !!prof.error, msg(prof))
+  const race = (await call(admin, 'get_networth_race', { p_since: null, p_max_points: 30 })).data || []
+  check('tampoco sale en la carrera de patrimonio', !race.some((r) => r.user_id === pB.id))
+  const feed = (await call(admin, 'get_recent_activity', { p_limit: 50 })).data || []
+  check('ni en la actividad en vivo', !feed.some((e) => e.username === nameB || e.username === `${nameB}_off`))
+  const stillBuys = await call(Bc, 'buy_shares', { p_market_id: mkt, p_side: 'NO', p_investment: 5 })
+  check('con la sesión que ya tenía abierta NO puede operar', !!stillBuys.error && /deshabilitada/i.test(msg(stillBuys)), msg(stillBuys))
+  const relog = await anon().auth.signInWithPassword({ email: synth(`${nameB}_off`), password: pw })
+  const relog2 = await anon().auth.signInWithPassword({ email: synth(nameB), password: pw })
+  check('no puede volver a entrar (ni con su nombre ni con el nuevo)', !!relog.error && !!relog2.error, relog.error?.message)
+  const listedB = ((await call(admin, 'admin_list_players')).data || []).find((x) => x.id === pB.id)
+  check('el dueño lo ve en la lista como deshabilitado', !!listedB?.disabled_at && listedB.username === `${nameB}_off`, JSON.stringify(listedB))
+  const info2 = (await call(admin, 'admin_get_signup')).data
+  check('y ya no cuenta para el cupo de jugadores', info2.players === countBeforeB, `${info2.players} vs ${countBeforeB}`)
+  // el nombre queda libre: la persona se puede registrar de nuevo
+  const again = await signup(nameB)
+  check('su nombre quedó libre: puede crear una cuenta nueva con el mismo nombre', !again.error && !!again.session, again.error?.message)
+  // eliminar solo después de deshabilitar
+  const delEnabled = await call(admin, 'admin_delete_player', { p_user_id: again.id })
+  check('no se puede eliminar a un jugador que sigue habilitado', !!delEnabled.error, msg(delEnabled))
+  // rehabilitar: como el nombre ya lo usa otro, se queda con el nombre «_off»
+  const en1 = await call(admin, 'admin_enable_player', { p_user_id: pB.id })
+  check('rehabilitar con el nombre ocupado: conserva el nombre «_off» y vuelve a poder entrar', !en1.error && en1.data?.username === `${nameB}_off`, msg(en1))
+  const relog3 = await anon().auth.signInWithPassword({ email: synth(`${nameB}_off`), password: pw })
+  check('rehabilitado: entra otra vez', !relog3.error && !!relog3.data?.session, relog3.error?.message)
+  // deshabilitar al duplicado, rehabilitar al original con su nombre y eliminar
+  await call(admin, 'admin_disable_player', { p_user_id: again.id })
+  await call(admin, 'admin_disable_player', { p_user_id: pB.id })
+  const en2 = await call(admin, 'admin_enable_player', { p_user_id: pB.id })
+  check('rehabilitar con el nombre libre: recupera su nombre original', !en2.error, msg(en2))
+  const del = await call(admin, 'admin_delete_player', { p_user_id: again.id })
+  check('el dueño elimina por completo a un jugador ya deshabilitado', !del.error && del.data?.success === true, msg(del))
+  const gone = ((await call(admin, 'admin_list_players')).data || []).some((x) => x.id === again.id)
+  check('y desaparece de la lista', !gone)
+  const delOwner = await call(admin, 'admin_delete_player', { p_user_id: U[0].id })
+  check('no se puede eliminar al dueño', !!delOwner.error, msg(delOwner))
+  await call(admin, 'delete_market_and_refund', { p_market_id: mkt })
+}
+
+// =====================================================================
+async function phaseSchedule(U, C) {
+  section('APERTURA PROGRAMADA · el mercado se abre en una fecha y hora')
+  const admin = C[0]
+  const p1 = C[1]
+  const mod = C[2]
+  const HOUR = 3600e3
+  const iso = (ms) => new Date(Date.now() + ms).toISOString()
+
+  const f = await call(admin, 'staff_create_market', { p_question: '[TEST] Mercado que abre en 1 hora', p_opens_at: iso(HOUR) })
+  check('crea un mercado con apertura dentro de 1 hora', !f.error && typeof f.data === 'string', msg(f))
+  const row = await getMarket(admin, f.data)
+  check('queda guardada la hora de apertura', !!row.opens_at && Math.abs(Date.parse(row.opens_at) - (Date.now() + HOUR)) < 60e3, row.opens_at)
+  const prices = await call(p1, 'get_market_prices')
+  check('get_market_prices incluye la apertura (los jugadores lo ven como «Próximamente»)', prices.data?.find((r) => r.id === f.data)?.opens_at === row.opens_at, JSON.stringify(prices.data?.find((r) => r.id === f.data)))
+  const early = await call(p1, 'buy_shares', { p_market_id: f.data, p_side: 'YES', p_investment: 10 })
+  check('NO se puede comprar antes de la apertura', !!early.error && /todavía no abre/i.test(msg(early)), msg(early))
+  const resched = await call(admin, 'staff_update_market', { p_market_id: f.data, p_patch: { opens_at: iso(2 * HOUR) }, p_apply_group: false })
+  check('se puede reprogramar mientras nadie haya operado', !resched.error, msg(resched))
+  const openNow = await call(admin, 'staff_update_market', { p_market_id: f.data, p_patch: { opens_at: null }, p_apply_group: false })
+  const after = await getMarket(admin, f.data)
+  check('«Abrir ya» (apertura = nada) lo abre en el momento', !openNow.error && after.opens_at === null, msg(openNow))
+  const ok = await call(p1, 'buy_shares', { p_market_id: f.data, p_side: 'YES', p_investment: 10 })
+  check('y entonces sí se puede comprar', !ok.error, msg(ok))
+  const late = await call(admin, 'staff_update_market', { p_market_id: f.data, p_patch: { opens_at: iso(HOUR) }, p_apply_group: false })
+  check('con operaciones hechas ya no se puede reprogramar la apertura', !!late.error && /ya tiene operaciones/i.test(msg(late)), msg(late))
+
+  const bad = await call(admin, 'staff_create_market', { p_question: '[TEST] apertura después del cierre', p_opens_at: iso(3 * HOUR), p_closes_at: iso(2 * HOUR) })
+  check('la apertura debe ser antes del cierre', !!bad.error && /antes del cierre/i.test(msg(bad)), msg(bad))
+  const nearNow = await call(admin, 'staff_create_market', { p_question: '[TEST] apertura casi inmediata', p_opens_at: iso(5e3) })
+  const nearRow = nearNow.error ? null : await getMarket(admin, nearNow.data)
+  check('una apertura en los próximos segundos (o en el pasado) significa «abrir ya»', !nearNow.error && nearRow.opens_at === null, msg(nearNow))
+
+  const g = await call(admin, 'staff_create_market_group', { p_topic: '[TEST] Grupo que abre mañana', p_options: ['[TEST] G1', '[TEST] G2', '[TEST] G3'], p_opens_at: iso(24 * HOUR) })
+  check('un mercado de varias opciones se programa completo', !g.error && g.data?.ids?.length === 3, msg(g))
+  const gRows = await Promise.all((g.data?.ids || []).map((id) => getMarket(admin, id)))
+  check('todas sus opciones comparten la apertura', gRows.every((r) => r.opens_at === gRows[0].opens_at && !!r.opens_at))
+  const gBuy = await call(p1, 'buy_shares', { p_market_id: g.data.ids[1], p_side: 'NO', p_investment: 10 })
+  check('ninguna opción del grupo admite apuestas antes de abrir', !!gBuy.error && /todavía no abre/i.test(msg(gBuy)), msg(gBuy))
+  const gOpen = await call(admin, 'staff_update_market', { p_market_id: g.data.ids[0], p_patch: { opens_at: null }, p_apply_group: true })
+  const gAfter = await Promise.all((g.data?.ids || []).map((id) => getMarket(admin, id)))
+  check('abrir ya el grupo abre todas sus opciones', !gOpen.error && gAfter.every((r) => r.opens_at === null), msg(gOpen))
+
+  // cerrar un mercado que aún no abrió: se quita la apertura al cerrar
+  const u = await call(admin, 'staff_create_market', { p_question: '[TEST] Se cierra antes de abrir', p_opens_at: iso(HOUR) })
+  const closeIt = await call(admin, 'staff_update_market', { p_market_id: u.data, p_patch: { closes_at: iso(-3e3), opens_at: null }, p_apply_group: false })
+  check('«Cerrar ahora» en un mercado que no había abierto funciona', !closeIt.error, msg(closeIt))
+  const closeBad = await call(admin, 'staff_update_market', { p_market_id: f.data, p_patch: { closes_at: iso(-3e3), opens_at: iso(HOUR) }, p_apply_group: false })
+  check('no deja programar una apertura posterior al cierre', !!closeBad.error, msg(closeBad))
+
+  // el moderador solo programa lo suyo
+  const mm = await call(admin, 'admin_set_moderator', { p_user_id: U[2].id, p_value: true })
+  const own = await call(mod, 'staff_create_market', { p_question: '[TEST] Programado por el moderador', p_opens_at: iso(HOUR) })
+  check('un moderador puede programar la apertura de sus mercados', !mm.error && !own.error, msg(own))
+  const notOwn = await call(mod, 'staff_update_market', { p_market_id: g.data.ids[0], p_patch: { opens_at: iso(HOUR) }, p_apply_group: false })
+  check('pero no la de mercados ajenos', !!notOwn.error, msg(notOwn))
+  await call(admin, 'admin_set_moderator', { p_user_id: U[2].id, p_value: false })
+}
+
+// =====================================================================
+async function phaseReward(U, C) {
+  section('PREMIO · quienes no pudieron participar (mercado sorpresa) reciben un porcentaje del dinero apostado')
+  const admin = C[0]
+  const [P1, P2, P3] = [C[3], C[4], C[5]]
+  const H1 = { c: C[8], id: U[8].id }
+  const H2 = { c: C[9], id: U[9].id }
+  const original = (await admin.from('game_settings').select('hidden_reward_pct, hidden_reward_cap, hidden_reward_mode').single()).data
+  check('valores por defecto: 2 % del volumen, máximo $40, repartido', Number(original.hidden_reward_pct) === 0.02 && Number(original.hidden_reward_cap) === 40 && original.hidden_reward_mode === 'shared', JSON.stringify(original))
+  try {
+    const badSet = await call(admin, 'admin_set_reward', { p_pct: 0.5, p_cap: 10, p_mode: 'shared' })
+    const badMode = await call(admin, 'admin_set_reward', { p_pct: 0.02, p_cap: 10, p_mode: 'xx' })
+    check('el dueño no puede poner un premio absurdo (más de 20 %) ni un modo inválido', !!badSet.error && !!badMode.error, msg(badSet) + msg(badMode))
+
+    const volume = 100 + 200 + 50
+    const runScenario = async (label, hidden, expectEach, expectVolume = volume) => {
+      const b8 = await getBalance(H1.c, H1.id)
+      const b9 = await getBalance(H2.c, H2.id)
+      const m = (await call(admin, 'staff_create_market', { p_question: `[TEST] Sorpresa ${label}`, p_target_users: hidden.map((h) => h.id) })).data
+      const seen = await H1.c.from('markets').select('id').eq('id', m)
+      check(`${label}: los ocultos NO pueden ver el mercado`, (seen.data?.length ?? 0) === 0 || !hidden.some((h) => h.id === U[8].id))
+      await call(P1, 'buy_shares', { p_market_id: m, p_side: 'YES', p_investment: 100 })
+      await call(P2, 'buy_shares', { p_market_id: m, p_side: 'NO', p_investment: 200 })
+      await call(P3, 'buy_shares', { p_market_id: m, p_side: 'YES', p_investment: 50 })
+      const res = await call(admin, 'resolve_market', { p_market_id: m, p_outcome: 'YES' })
+      check(`${label}: se resuelve y devuelve el premio calculado`, !res.error && Math.abs(Number(res.data?.reward_each) - expectEach) < 1e-4 && Number(res.data?.volume) === expectVolume, JSON.stringify(res.data) + msg(res))
+      return { m, b8, b9 }
+    }
+
+    // 1) por defecto: bolsa del 2 % repartida entre 2 personas = 350 × 0.02 / 2 = 3.5 cada una
+    const a = await runScenario('2 ocultos', [H1, H2], 3.5)
+    check('cada persona oculta recibe su parte', Math.abs((await getBalance(H1.c, H1.id)) - a.b8 - 3.5) < 1e-4 && Math.abs((await getBalance(H2.c, H2.id)) - a.b9 - 3.5) < 1e-4)
+    const tx = await H1.c.from('transactions').select('type, total_cost').eq('market_id', a.m)
+    check('queda registrado como «premio» (no como victoria) en su historial', tx.data?.length === 1 && tx.data[0].type === 'REWARD' && Number(tx.data[0].total_cost) === 3.5, JSON.stringify(tx.data))
+    const st = (await call(H1.c, 'get_session_state')).data
+    const note = st?.notifications?.find((n) => n.kind === 'HIDDEN_REWARD')
+    check('recibe un aviso de premio SIN revelar la pregunta del mercado', !!note && Number(note.payload.amount) === 3.5 && !('question' in note.payload) && note.market_id === null, JSON.stringify(note))
+    const pf = (await call(H1.c, 'get_player_profile', { p_user_id: H1.id })).data
+    check('el premio no cuenta como acierto en sus estadísticas', pf?.wins === 0 && pf?.losses === 0, JSON.stringify(pf))
+    // deshacer la resolución quita el premio (en silencio)
+    const re = await call(admin, 'admin_reopen_market', { p_market_id: a.m })
+    check('deshacer la resolución devuelve el premio', !re.error && Math.abs((await getBalance(H1.c, H1.id)) - a.b8) < 1e-4, msg(re))
+    const st2 = (await call(H1.c, 'get_session_state')).data
+    check('y no avisa de nada a quien no podía ver el mercado', !(st2?.notifications || []).some((n) => n.kind === 'HIDDEN_REWARD' || n.kind === 'MARKET_REOPENED'), JSON.stringify(st2?.notifications))
+    await call(admin, 'resolve_market', { p_market_id: a.m, p_outcome: 'NO' })
+    check('al resolver otra vez se paga una sola vez', Math.abs((await getBalance(H1.c, H1.id)) - a.b8 - 3.5) < 1e-4)
+    // anular el mercado ya resuelto lo deja todo como estaba
+    const del = await call(admin, 'delete_market_and_refund', { p_market_id: a.m })
+    const st3 = (await call(H1.c, 'get_session_state')).data
+    check('anular el mercado quita el premio y no le avisa', !del.error && Math.abs((await getBalance(H1.c, H1.id)) - a.b8) < 1e-4 && !(st3?.notifications || []).some((n) => n.kind === 'MARKET_CANCELLED' || n.kind === 'HIDDEN_REWARD'), msg(del))
+
+    // 2) una sola persona oculta: recibe la bolsa completa (350 × 2 % = 7)
+    const b = await runScenario('1 oculto', [H1], 7)
+    check('con una sola persona oculta recibe la bolsa completa ($7)', Math.abs((await getBalance(H1.c, H1.id)) - b.b8 - 7) < 1e-4 && Math.abs((await getBalance(H2.c, H2.id)) - b.b9) < 1e-4)
+    await call(admin, 'delete_market_and_refund', { p_market_id: b.m })
+
+    // 3) modo «cada uno»: cada persona recibe el 2 % completo (7)
+    await call(admin, 'admin_set_reward', { p_pct: 0.02, p_cap: 40, p_mode: 'each' })
+    const c = await runScenario('modo cada uno', [H1, H2], 7)
+    check('en modo «cada uno» las dos reciben $7', Math.abs((await getBalance(H1.c, H1.id)) - c.b8 - 7) < 1e-4 && Math.abs((await getBalance(H2.c, H2.id)) - c.b9 - 7) < 1e-4)
+    await call(admin, 'delete_market_and_refund', { p_market_id: c.m })
+
+    // 4) tope por persona
+    await call(admin, 'admin_set_reward', { p_pct: 0.1, p_cap: 5, p_mode: 'each' })
+    const d = await runScenario('con tope', [H1], 5)
+    check('el tope por persona se respeta ($5 en lugar de $35)', Math.abs((await getBalance(H1.c, H1.id)) - d.b8 - 5) < 1e-4)
+    await call(admin, 'delete_market_and_refund', { p_market_id: d.m })
+
+    // 5) sin apuestas no hay premio; porcentaje 0 tampoco; el dueño oculto no cobra
+    await call(admin, 'admin_set_reward', { p_pct: 0.02, p_cap: 40, p_mode: 'shared' })
+    const e = (await call(admin, 'staff_create_market', { p_question: '[TEST] Sorpresa sin apuestas', p_target_users: [H1.id] })).data
+    const b1 = await getBalance(H1.c, H1.id)
+    const eRes = await call(admin, 'resolve_market', { p_market_id: e, p_outcome: 'NO' })
+    check('un mercado sorpresa sin apuestas no paga premio', !eRes.error && Number(eRes.data?.reward_each) === 0 && (await getBalance(H1.c, H1.id)) === b1, JSON.stringify(eRes.data))
+    await call(admin, 'delete_market_and_refund', { p_market_id: e })
+    await call(admin, 'admin_set_reward', { p_pct: 0, p_cap: 40, p_mode: 'shared' })
+    const z = await runScenario('porcentaje 0', [H1], 0, 0)
+    check('con el porcentaje en 0 no se paga nada', (await getBalance(H1.c, H1.id)) === z.b8)
+    await call(admin, 'delete_market_and_refund', { p_market_id: z.m })
+    await call(admin, 'admin_set_reward', { p_pct: 0.02, p_cap: 40, p_mode: 'shared' })
+    const own = (await call(admin, 'staff_create_market', { p_question: '[TEST] Sorpresa con el dueño en la lista', p_target_users: [U[0].id, H2.id] })).data
+    await call(P1, 'buy_shares', { p_market_id: own, p_side: 'YES', p_investment: 100 })
+    const bAdmin = await getBalance(admin, U[0].id)
+    const bH2 = await getBalance(H2.c, H2.id)
+    const ownRes = await call(admin, 'resolve_market', { p_market_id: own, p_outcome: 'YES' })
+    check('el dueño (que ve todo) no cobra premio aunque esté en la lista; el otro sí', !ownRes.error && (await getBalance(admin, U[0].id)) === bAdmin && (await getBalance(H2.c, H2.id)) > bH2, JSON.stringify(ownRes.data))
+    await call(admin, 'delete_market_and_refund', { p_market_id: own })
+  } finally {
+    await call(admin, 'admin_set_reward', { p_pct: Number(original.hidden_reward_pct), p_cap: Number(original.hidden_reward_cap), p_mode: original.hidden_reward_mode })
+    const now = (await admin.from('game_settings').select('hidden_reward_pct, hidden_reward_cap, hidden_reward_mode').single()).data
+    check('la configuración real del premio quedó como estaba', Number(now.hidden_reward_pct) === Number(original.hidden_reward_pct) && Number(now.hidden_reward_cap) === Number(original.hidden_reward_cap) && now.hidden_reward_mode === original.hidden_reward_mode, JSON.stringify(now))
+  }
+}
+
 // =====================================================================
 async function cleanupMarkets(admin) {
   const { data } = await admin.from('markets').select('id, question').like('question', '[TEST]%')
@@ -963,7 +1259,17 @@ try {
     await cleanupMarkets(C[0])
   }
   if (PHASE === 'access' || PHASE === 'all') await phaseAccess(U, C)
+  if (PHASE === 'schedule' || PHASE === 'all') {
+    await phaseSchedule(U, C)
+    await cleanupMarkets(C[0])
+  }
+  if (PHASE === 'reward' || PHASE === 'all') {
+    await phaseReward(U, C)
+    await cleanupMarkets(C[0])
+  }
   if (PHASE === 'conc' || PHASE === 'all') await phaseConcurrency(U, C)
+  // al final: restablece contraseñas de cuentas de prueba (cierra sus sesiones)
+  if (PHASE === 'accounts' || PHASE === 'all') await phaseAccounts(U, C)
 } finally {
   if (PHASE !== 'keep') {
     const n = await cleanupMarkets(C[0])

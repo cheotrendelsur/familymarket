@@ -66,6 +66,7 @@ function ApproveSheet({ suggestion, onClose, onDone }) {
       p_description: v.description,
       p_category: v.category,
       p_closes_at: v.closes_at,
+      p_opens_at: v.opens_at,
       p_image_url: img.image_url || null,
       p_image_thumb_url: img.image_thumb_url || null,
       p_image_color: img.image_color || null,

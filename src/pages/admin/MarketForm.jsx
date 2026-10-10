@@ -6,23 +6,26 @@ import { serverNow } from '../../lib/clock'
 import { friendlyError } from '../../lib/format'
 import { releaseProcessed, uploadMarketImages } from '../../lib/images'
 import ImagePicker from '../../components/ImagePicker'
-import { CategoryPicker, ClosesAtField, Field, Notice, inputClass } from './adminUi'
+import { useGame } from '../../context/GameContext'
+import { CategoryPicker, ClosesAtField, Field, Notice, OpensAtField, inputClass } from './adminUi'
 
 /**
  * Formulario de mercado (crear uno nuevo o aprobar una sugerencia).
  * Lo esencial va arriba (pregunta, foto, cierre, categoría) y lo demás queda en «Más opciones».
  * `onSubmit(values)` recibe: { kind, question, options, description, category,
- *   closes_at, image: {image_url, image_thumb_url, image_color} | null, target_users }
+ *   opens_at, closes_at, image: {image_url, image_thumb_url, image_color} | null, target_users }
  *  · kindLocked: 'single' | 'multiple' para fijar el tipo (sugerencias)
  *  · fixedOptions: opciones ya definidas por quien sugirió (no se editan)
  */
 export default function MarketForm({ initial = {}, kindLocked = null, fixedOptions = null, submitLabel, onSubmit }) {
+  const { config } = useGame()
   const [kind, setKind] = useState(kindLocked || initial.kind || 'single')
   const [question, setQuestion] = useState(initial.question || '')
   const [options, setOptions] = useState(fixedOptions || ['', ''])
   const [description, setDescription] = useState(initial.description || '')
   const [category, setCategory] = useState(initial.category || 'otros')
   const [closesLocal, setClosesLocal] = useState('')
+  const [opensLocal, setOpensLocal] = useState('')
   const [processed, setProcessed] = useState(null)
   const [hiddenFrom, setHiddenFrom] = useState([])
   const [showMore, setShowMore] = useState(false)
@@ -45,7 +48,11 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
   const cleanOptions = (fixedOptions || options).map((o) => o.trim()).filter(Boolean)
   const closesIso = fromLocalInput(closesLocal)
   const closesInPast = closesIso && Date.parse(closesIso) <= serverNow() + 30000
-  const canSubmit = question.trim().length >= 3 && (!multiple || cleanOptions.length >= 2) && !closesInPast && !busy
+  const opensIso = fromLocalInput(opensLocal)
+  const opensInPast = opensIso && Date.parse(opensIso) <= serverNow() + 30000
+  const opensAfterClose = opensIso && closesIso && Date.parse(opensIso) >= Date.parse(closesIso)
+  const canSubmit =
+    question.trim().length >= 3 && (!multiple || cleanOptions.length >= 2) && !closesInPast && !opensInPast && !opensAfterClose && !busy
 
   const submit = async (e) => {
     e.preventDefault()
@@ -65,6 +72,7 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
         description: description.trim() || null,
         category,
         closes_at: closesIso,
+        opens_at: opensIso,
         image,
         target_users: hiddenFrom.length ? hiddenFrom : null,
       })
@@ -151,6 +159,12 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
         <ImagePicker value={processed} onChange={setProcessed} category={category} disabled={!!busy} />
       </Field>
 
+      <Field label="¿Cuándo se abre?">
+        <OpensAtField value={opensLocal} onChange={setOpensLocal} />
+        {opensInPast && <p className="text-xs text-red-600 mt-1.5 font-semibold">La fecha de apertura debe estar en el futuro (o elige «Al crearse»).</p>}
+        {opensAfterClose && <p className="text-xs text-red-600 mt-1.5 font-semibold">La apertura debe ser antes del cierre.</p>}
+      </Field>
+
       <Field label="¿Cuándo cierran las apuestas?">
         <ClosesAtField value={closesLocal} onChange={setClosesLocal} />
         {closesInPast && <p className="text-xs text-red-600 mt-1.5 font-semibold">La fecha de cierre debe estar en el futuro.</p>}
@@ -190,6 +204,13 @@ export default function MarketForm({ initial = {}, kindLocked = null, fixedOptio
               <p className="text-xs text-gray-500 mb-3">
                 Elige a quién quieres <b>ocultarle</b> este mercado (por ejemplo, la persona sorprendida). Si no eliges a nadie, lo ven todos.
               </p>
+              {hiddenFrom.length > 0 && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-3" role="status">
+                  🎁 Al resolverse, {hiddenFrom.length === 1 ? 'esa persona recibirá' : `esas ${hiddenFrom.length} personas recibirán`} un premio automático por no poder participar:{' '}
+                  <b>{Math.round((config.hidden_reward_pct ?? 0.02) * 1000) / 10} % del dinero apostado</b>
+                  {config.hidden_reward_mode === 'each' ? ' (cada una)' : ' (repartido entre ellas)'}, con un máximo de <b>${config.hidden_reward_cap ?? 40}</b> por persona.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 {players.map((u) => {
                   const selected = hiddenFrom.includes(u.id)

@@ -182,6 +182,12 @@ function LossCard({ n, index, total, onClose, closing }) {
 }
 
 const INFO = {
+  HIDDEN_REWARD: {
+    emoji: '🎁',
+    title: '¡Premio por mercado sorpresa!',
+    text: (p) => `Hubo un mercado sorpresa en el que no pudiste participar. Como compensación recibiste ${money(p.amount)}.`,
+    button: '¡Genial!',
+  },
   MARKET_REOPENED: {
     emoji: '↩️',
     title: 'Resolución deshecha',
@@ -219,7 +225,7 @@ const INFO = {
 function InfoCard({ n, index, total, onClose, onOpenMarket, closing }) {
   const info = INFO[n.kind]
   const p = n.payload || {}
-  const approved = n.kind === 'SUGGESTION_APPROVED'
+  const approved = n.kind === 'SUGGESTION_APPROVED' || n.kind === 'HIDDEN_REWARD'
 
   useEffect(() => {
     if (approved) {
@@ -246,12 +252,12 @@ function InfoCard({ n, index, total, onClose, onOpenMarket, closing }) {
         </p>
         <button
           autoFocus
-          onClick={approved && n.market_id ? () => onOpenMarket(n.market_id) : onClose}
+          onClick={n.kind === 'SUGGESTION_APPROVED' && n.market_id ? () => onOpenMarket(n.market_id) : onClose}
           className="mt-6 w-full py-4 rounded-2xl bg-polyblue hover:bg-blue-700 text-white font-bold text-lg tap-feedback shadow-lg shadow-blue-500/20"
         >
           {info.button}
         </button>
-        {approved && (
+        {n.kind === 'SUGGESTION_APPROVED' && (
           <button onClick={onClose} className="mt-2 w-full py-2 text-sm font-semibold text-gray-400">
             Después
           </button>

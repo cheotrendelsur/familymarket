@@ -33,6 +33,8 @@ const players = NAMES.map((username, i) => ({
 const me = players[0]
 const byId = (id) => players.find((p) => p.id === id)
 const signup = { code: 'DEMO2026', is_open: true, max_players: 60 }
+const helpRequests = [{ id: 1, name: 'Mari', note: 'soy la hermana de Tomi', created_at: iso(now() - min(7)) }]
+const settings = { ...DEFAULT_CONFIG, hidden_reward_pct: 0.02, hidden_reward_cap: 40, hidden_reward_mode: 'shared' }
 const invites = [
   { email: 'abuela.rosa@gmail.com', password_ok: false, note: null, created_at: iso(now() - hour(5)), username: null, joined: false },
   { email: 'primo.luis@hotmail.com', password_ok: true, note: null, created_at: iso(now() - hour(3)), username: null, joined: false },
@@ -66,6 +68,7 @@ const mk = (o) => {
     closed: !!o.closed,
     outcome: o.outcome || 'PENDING',
     closes_at: o.closes_at ? iso(o.closes_at) : null,
+    opens_at: o.opens_at ? iso(o.opens_at) : null,
     static_rev: 0,
   }
 }
@@ -101,6 +104,7 @@ let markets = [
     yes_pool: 1300,
     no_pool: 1100,
   }),
+  mk({ id: 'soonopen', question: '¿Cantamos cumpleaños antes de las 8 pm?', category: 'familia', opens_at: now() + hour(2) + min(5), created_by: 'me' }),
   mk({ id: 'pending', question: '¿Salimos antes de las 9 am hacia la isla?', category: 'viaje', closes_at: now() - min(10), yes_pool: 700, no_pool: 1900 }),
   mk({ id: 'noclose', question: '¿Alguien se cae al mar del bote?', category: 'juegos', yes_pool: 1100, no_pool: 1320 }),
   mk({
@@ -233,7 +237,8 @@ let tourDone = !(typeof window !== 'undefined' && new URLSearchParams(window.loc
 let revCounter = 1
 
 // ------------------------------------------------------------------ helpers
-const stateOf = (m) => (m.closed ? 'resolved' : m.closes_at && now() >= Date.parse(m.closes_at) ? 'pending' : 'open')
+const stateOf = (m) =>
+  m.closed ? 'resolved' : m.opens_at && now() < Date.parse(m.opens_at) ? 'upcoming' : m.closes_at && now() >= Date.parse(m.closes_at) ? 'pending' : 'open'
 const visible = (m) => me.is_admin || !m.target_users?.includes('me') || m.created_by === 'me'
 const tradesOf = (m, ms) => txs.filter((t) => t.market === m.id && ['BUY', 'SELL'].includes(t.type) && now() - Date.parse(t.created_at) < ms)
 const posValue = (userId) => {
@@ -261,6 +266,7 @@ const priceRow = (m) => {
     closed: m.closed,
     outcome: m.outcome,
     closes_at: m.closes_at,
+    opens_at: m.opens_at,
     static_rev: m.static_rev,
     trades_24h: t24,
     traders_24h: Math.min(t24, 4),
@@ -271,7 +277,7 @@ const priceRow = (m) => {
 }
 
 const staticRow = (m) => {
-  const { yes_pool, no_pool, closed, outcome, closes_at, trades_extra, ...rest } = m // eslint-disable-line no-unused-vars
+  const { yes_pool, no_pool, closed, outcome, closes_at, opens_at, trades_extra, ...rest } = m // eslint-disable-line no-unused-vars
   return rest
 }
 
@@ -342,6 +348,7 @@ const handlers = {
   async buy_shares({ p_market_id, p_side, p_investment, p_max_price }) {
     const m = markets.find((x) => x.id === p_market_id)
     if (!m || !visible(m)) throw new Error('El mercado no existe')
+    if (stateOf(m) === 'upcoming') throw new Error('Este mercado todavía no abre.')
     if (stateOf(m) !== 'open') throw new Error('Las apuestas de este mercado ya cerraron.')
     const q = quoteBuy(m, p_side, p_investment, DEFAULT_CONFIG)
     if (q.error) throw new Error(q.error)
@@ -513,7 +520,65 @@ const handlers = {
     return players.map(({ id, username, is_moderator, is_admin }) => ({ id, username, is_moderator, is_admin }))
   },
   async admin_list_players() {
-    return players.map((p) => ({ ...p }))
+    return players
+      .map((p, i) => ({
+        ...p,
+        disabled_at: p.disabled_at || null,
+        login_kind: i % 3 === 0 ? 'correo' : 'usuario',
+        email_hint: i % 3 === 0 ? `${p.username.slice(0, 2).toLowerCase()}***@gmail.com` : null,
+        needs_password_change: !!p.needs_password_change,
+      }))
+      .sort((a, b) => Number(!!a.disabled_at) - Number(!!b.disabled_at))
+  },
+  async admin_disable_player({ p_user_id }) {
+    const p = byId(p_user_id)
+    if (p.is_admin) throw new Error('No se puede deshabilitar al dueño')
+    p.original_username = p.username
+    p.username = `${p.username.slice(0, 14)}_off`
+    p.disabled_at = iso(now())
+    return { success: true, username: p.username, original_username: p.original_username }
+  },
+  async admin_enable_player({ p_user_id }) {
+    const p = byId(p_user_id)
+    p.username = p.original_username || p.username
+    p.disabled_at = null
+    return { success: true, username: p.username }
+  },
+  async admin_delete_player({ p_user_id }) {
+    const i = players.findIndex((p) => p.id === p_user_id)
+    if (!players[i].disabled_at) throw new Error('Primero deshabilita al jugador; después se puede eliminar')
+    players.splice(i, 1)
+    return { success: true, open_positions_removed: 0 }
+  },
+  async request_help({ p_name }) {
+    if (String(p_name || '').trim().length < 2) return { ok: false, reason: 'invalid' }
+    helpRequests.unshift({ id: helpRequests.length + 1, name: String(p_name).trim(), note: null, created_at: iso(now()) })
+    return { ok: true }
+  },
+  async admin_list_help_requests() {
+    return helpRequests.map((r) => ({
+      ...r,
+      matches: players.filter((p) => !p.is_admin && !p.disabled_at && p.username.toLowerCase().includes(r.name.toLowerCase())).slice(0, 5).map((p) => ({ id: p.id, username: p.username })),
+    }))
+  },
+  async admin_handle_help_request({ p_id }) {
+    const i = helpRequests.findIndex((r) => r.id === p_id)
+    if (i >= 0) helpRequests.splice(i, 1)
+    return { success: true }
+  },
+  async similar_players({ p_code, p_username }) {
+    if (String(p_code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase() !== signup.code) return []
+    const k = String(p_username || '').toLowerCase().replace(/[^a-z]/g, '')
+    if (k.length < 3) return []
+    return players.filter((p) => !p.disabled_at && p.username.toLowerCase() !== String(p_username).toLowerCase() && p.username.toLowerCase().replace(/[^a-z]/g, '') === k).map((p) => p.username)
+  },
+  async password_changed() {
+    me.needs_password_change = false
+    return { success: true }
+  },
+  async admin_set_reward({ p_pct, p_cap, p_mode }) {
+    Object.assign(settings, { hidden_reward_pct: p_pct, hidden_reward_cap: p_cap, hidden_reward_mode: p_mode })
+    return { success: true, pct: p_pct, cap: p_cap, mode: p_mode }
   },
   async signup_status() {
     return { open: signup.is_open, full: players.length >= signup.max_players }
@@ -583,8 +648,10 @@ const handlers = {
     byId(p_user_id).username = p_username
     return { success: true, username: p_username }
   },
-  async admin_reset_password() {
-    return { success: true }
+  async admin_reset_password({ p_user_id }) {
+    const p = byId(p_user_id)
+    p.needs_password_change = true
+    return { success: true, username: p.username, login_with_username: true, converted: true }
   },
   async admin_update_balance({ p_user_id, p_amount }) {
     byId(p_user_id).balance += p_amount
@@ -644,6 +711,7 @@ function fromArgs(a) {
     description: a.p_description,
     category: a.p_category || 'otros',
     closes_at: a.p_closes_at ? Date.parse(a.p_closes_at) : null,
+    opens_at: a.p_opens_at && Date.parse(a.p_opens_at) > now() + 30000 ? Date.parse(a.p_opens_at) : null,
     image_url: a.p_image_url,
     image_thumb_url: a.p_image_thumb_url,
     image_color: a.p_image_color,
@@ -669,7 +737,7 @@ export async function rpc(name, args = {}) {
 export const db = {
   async gameSettings() {
     await delay(40)
-    return { ...DEFAULT_CONFIG }
+    return { ...settings }
   },
   async marketsByIds(ids) {
     await delay()
@@ -690,7 +758,7 @@ export const db = {
   },
   async profile() {
     await delay(40)
-    return { data: { id: me.id, username: me.username, balance: me.balance, is_admin: me.is_admin, is_moderator: me.is_moderator, email: 'cheche@familia.test', tour_completed_at: tourDone ? iso(now() - hour(5)) : null }, error: null }
+    return { data: { id: me.id, username: me.username, balance: me.balance, is_admin: me.is_admin, is_moderator: me.is_moderator, email: 'cheche@familia.test', tour_completed_at: tourDone ? iso(now() - hour(5)) : null, disabled_at: null, needs_password_change: !!me.needs_password_change }, error: null }
   },
   async uploadImage(path, blob) {
     await delay(200)
@@ -721,6 +789,9 @@ export const auth = {
   },
   async signInWithGoogle() {
     return auth.signIn()
+  },
+  async updatePassword() {
+    return { error: null }
   },
   async signOut() {
     session = null

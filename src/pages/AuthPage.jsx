@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Eye, EyeOff, LifeBuoy, Loader } from 'lucide-react'
 import { auth, rpc } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { USERNAME_RE, formatCode, loginEmail, normalizeCode, playerEmail } from '../lib/accounts'
 import { copyText, inAppBrowser } from '../lib/browser'
 import { friendlyAuthError } from '../lib/format'
+import { store } from '../lib/storage'
 
 const inputClass =
   'w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-polyblue focus:ring-4 focus:ring-polyblue focus:ring-opacity-10 outline-none transition'
@@ -92,9 +93,19 @@ export default function AuthPage() {
   const [username, setUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [nameHint, setNameHint] = useState(null) // null | 'ok' | 'taken' | 'invalid'
+  const [similar, setSimilar] = useState([]) // jugadores con nombre parecido (posible duplicado)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpName, setHelpName] = useState('')
+  const [helpNote, setHelpNote] = useState('')
+  const [helpBusy, setHelpBusy] = useState(false)
+  const [helpDone, setHelpDone] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleBusy, setGoogleBusy] = useState(false)
-  const [error, setError] = useState(() => readOAuthError())
+  const [error, setError] = useState(() => {
+    const notice = store.get('fm_notice', null)
+    if (notice) store.set('fm_notice', null)
+    return notice || readOAuthError()
+  })
   const [waiting, setWaiting] = useState(null)
   const [copied, setCopied] = useState(false)
   const nameTimer = useRef(null)
@@ -145,9 +156,60 @@ export default function AuthPage() {
     return () => clearTimeout(nameTimer.current)
   }, [username])
 
+  // Aviso «ya existe alguien parecido»: evita que quien olvidó su cuenta cree otra nueva
+  useEffect(() => {
+    const v = username.trim()
+    const c = normalizeCode(code)
+    if (mode !== 'signup' || c.length < 8 || !USERNAME_RE.test(v)) {
+      setSimilar([])
+      return undefined
+    }
+    let active = true
+    const t = setTimeout(async () => {
+      try {
+        const r = await rpc('similar_players', { p_code: c, p_username: v })
+        if (active) setSimilar(Array.isArray(r) ? r : [])
+      } catch {
+        if (active) setSimilar([])
+      }
+    }, 600)
+    return () => {
+      active = false
+      clearTimeout(t)
+    }
+  }, [mode, code, username])
+
+  const openHelp = (name = '') => {
+    setHelpName(name)
+    setHelpDone(false)
+    setHelpOpen(true)
+    setMode('login')
+    setError(null)
+  }
+
+  const sendHelp = async (e) => {
+    e.preventDefault()
+    if (helpBusy) return
+    setHelpBusy(true)
+    setError(null)
+    try {
+      const r = await rpc('request_help', { p_name: helpName.trim(), p_note: helpNote.trim() || null })
+      if (!r?.ok) {
+        setError(r?.reason === 'locked' ? 'Hay muchas solicitudes ahora mismo. Intenta de nuevo en un rato o escríbele a Cheche.' : 'Escribe tu nombre (al menos 2 letras).')
+      } else {
+        setHelpDone(true)
+      }
+    } catch {
+      setError('No se pudo enviar. Revisa tu conexión e inténtalo otra vez, o escríbele a Cheche.')
+    } finally {
+      setHelpBusy(false)
+    }
+  }
+
   const switchMode = (next) => {
     setMode(next)
     setError(null)
+    setHelpOpen(false)
   }
 
   const handleGoogle = async () => {
@@ -314,7 +376,39 @@ export default function AuthPage() {
                   )}
                 </button>
               </form>
-              <p className="text-xs text-gray-500 text-center mt-4">¿Olvidaste tu contraseña? Pídele a Cheche que te la restablezca.</p>
+              {!helpOpen && (
+                <button type="button" onClick={() => openHelp()} className="mt-4 w-full flex items-center justify-center gap-2 text-sm font-bold text-gray-600 py-2.5 rounded-xl bg-gray-50 border border-gray-200">
+                  <LifeBuoy size={16} /> ¿Olvidaste tu usuario o tu contraseña?
+                </button>
+              )}
+              {helpOpen && (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4" aria-label="Pedir ayuda">
+                  {helpDone ? (
+                    <p className="text-sm text-amber-900">
+                      <b>Listo.</b> Cheche vio tu solicitud y te escribirá con tu usuario y una contraseña nueva. <b>No crees otra cuenta</b>: perderías tu saldo y tus apuestas.
+                    </p>
+                  ) : (
+                    <form onSubmit={sendHelp} className="space-y-3">
+                      <p className="text-sm text-amber-900 font-semibold">No crees otra cuenta. Dinos quién eres y Cheche te devuelve el acceso.</p>
+                      <div>
+                        <label htmlFor="help-name" className="block text-xs font-bold text-amber-900 mb-1">
+                          Tu nombre (el del juego o tu nombre real)
+                        </label>
+                        <input id="help-name" type="text" value={helpName} onChange={(e) => setHelpName(e.target.value)} maxLength={60} required className={inputClass} />
+                      </div>
+                      <div>
+                        <label htmlFor="help-note" className="block text-xs font-bold text-amber-900 mb-1">
+                          Algo que ayude a reconocerte (opcional)
+                        </label>
+                        <input id="help-note" type="text" value={helpNote} onChange={(e) => setHelpNote(e.target.value)} maxLength={200} placeholder="Ej: soy la hermana de Tomi" className={inputClass} />
+                      </div>
+                      <button type="submit" disabled={helpBusy || helpName.trim().length < 2} className="w-full bg-amber-500 text-white py-3 rounded-xl font-bold disabled:opacity-50">
+                        {helpBusy ? 'Enviando…' : 'Pedir ayuda'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
               <button type="button" onClick={() => switchMode('signup')} className="mt-4 w-full text-polyblue font-bold">
                 ¿Primera vez? Crea tu cuenta
               </button>
@@ -369,6 +463,14 @@ export default function AuthPage() {
                     required
                     className={inputClass}
                   />
+                  {similar.length > 0 && (
+                    <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900" role="alert">
+                      Ya hay un jugador parecido: <b>{similar.join(', ')}</b>. Si eres tú, <b>no crees otra cuenta</b>.{' '}
+                      <button type="button" onClick={() => openHelp(similar[0])} className="font-bold underline">
+                        Pedir ayuda
+                      </button>
+                    </div>
+                  )}
                   <p className={`text-xs mt-1.5 flex items-center gap-1 ${nameHint === 'taken' || nameHint === 'invalid' ? 'text-red-600' : nameHint === 'ok' ? 'text-green-700' : 'text-gray-500'}`}>
                     {nameHint === 'ok' && <CheckCircle2 size={13} />}
                     {nameHint === 'ok'
@@ -399,6 +501,9 @@ export default function AuthPage() {
               </form>
               <button type="button" onClick={() => switchMode('login')} className="mt-5 w-full text-polyblue font-bold">
                 ¿Ya tienes cuenta? Entra aquí
+              </button>
+              <button type="button" onClick={() => openHelp()} className="mt-2 w-full text-sm font-semibold text-gray-500">
+                ¿Ya jugabas y olvidaste tu usuario? Pide ayuda
               </button>
             </>
           )}

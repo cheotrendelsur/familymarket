@@ -7,6 +7,7 @@ import { useManage } from '../hooks/useManage'
 import ActivityTab from './admin/ActivityTab'
 import CreateTab from './admin/CreateTab'
 import DangerTab from './admin/DangerTab'
+import RewardCard from './admin/RewardCard'
 import MarketsTab from './admin/MarketsTab'
 import PlayersTab from './admin/PlayersTab'
 import SuggestionsList from './admin/SuggestionsList'
@@ -22,6 +23,11 @@ function MoreTab({ isOwner }) {
       <Disclosure title="Sugerencias ya revisadas" hint="Las que aprobaste o rechazaste">
         <SuggestionsList view="history" />
       </Disclosure>
+      {isOwner && (
+        <Disclosure title="Premio por mercado sorpresa" hint="Lo que reciben quienes no pudieron participar">
+          <RewardCard />
+        </Disclosure>
+      )}
       {isOwner && (
         <Disclosure title="Empezar una partida nueva" hint="Archiva esta partida y deja todo en cero" danger>
           <DangerTab />

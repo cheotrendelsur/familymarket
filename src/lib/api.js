@@ -60,7 +60,7 @@ export const db = {
     return unwrap(
       await supabase
         .from('game_settings')
-        .select('daily_limit, fee_rate, initial_liquidity, initial_balance, min_price, max_price, min_trade')
+        .select('daily_limit, fee_rate, initial_liquidity, initial_balance, min_price, max_price, min_trade, hidden_reward_pct, hidden_reward_cap, hidden_reward_mode')
         .maybeSingle()
     )
   },
@@ -95,7 +95,7 @@ export const db = {
     if (mockPromise) return (await mockPromise).db.profile(userId)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, balance, is_admin, is_moderator, email, tour_completed_at')
+      .select('id, username, balance, is_admin, is_moderator, email, tour_completed_at, disabled_at, needs_password_change')
       .eq('id', userId)
       .maybeSingle()
     return { data, error }
@@ -169,6 +169,11 @@ export const auth = {
     } finally {
       clearTimeout(timer)
     }
+  },
+  /** El propio jugador cambia su contraseña (con la sesión abierta). */
+  async updatePassword(password) {
+    if (mockPromise) return (await mockPromise).auth.updatePassword(password)
+    return supabase.auth.updateUser({ password })
   },
   async signOut() {
     if (mockPromise) return (await mockPromise).auth.signOut()

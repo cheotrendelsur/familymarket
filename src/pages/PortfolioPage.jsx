@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Briefcase, CheckCircle, DollarSign, GraduationCap, History, TrendingUp, Vibrate, Volume2, VolumeX, Zap } from 'lucide-react'
+import { Briefcase, CheckCircle, DollarSign, GraduationCap, History, KeyRound, TrendingUp, UserRound, Vibrate, Volume2, VolumeX, Zap } from 'lucide-react'
 import { db } from '../lib/api'
 import { buildPosition, groupPositions } from '../lib/portfolio'
 import { money } from '../lib/format'
@@ -8,6 +8,7 @@ import { useGame } from '../context/GameContext'
 import { useMyPositions } from '../hooks/useMyPositions'
 import { useToggleSet } from '../hooks/useToggleSet'
 import { haptic, hapticsEnabled, playSound, setHapticsEnabled, setSoundEnabled, soundEnabled } from '../lib/fx'
+import { ChangePasswordSheet } from '../components/ChangePasswordSheet'
 import GroupAccordion from '../components/GroupAccordion'
 import OperationsList from '../components/OperationsList'
 import PositionCard from '../components/PositionCard'
@@ -69,6 +70,7 @@ export default function PortfolioPage() {
   const [openClosed, toggleClosed] = useToggleSet()
   const [sound, setSound] = useState(soundEnabled)
   const [vibration, setVibration] = useState(hapticsEnabled)
+  const [pwOpen, setPwOpen] = useState(false)
 
   const toggleOps = async () => {
     const next = !showOps
@@ -191,6 +193,25 @@ export default function PortfolioPage() {
             <OperationsList ops={operations} emptyText="Aún no has hecho operaciones" />
           </div>
         )}
+      </section>
+
+      <section aria-label="Mi cuenta">
+        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Mi cuenta</h2>
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-50 text-polyblue flex items-center justify-center flex-shrink-0">
+              <UserRound size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Tu usuario (con este entras)</p>
+              <p className="font-extrabold text-gray-900 truncate">{profile?.username}</p>
+            </div>
+          </div>
+          <button onClick={() => setPwOpen(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold border bg-white border-gray-200 text-polyblue">
+            <KeyRound size={17} /> Cambiar mi contraseña
+          </button>
+        </div>
+        <ChangePasswordSheet open={pwOpen} onClose={() => setPwOpen(false)} />
       </section>
 
       <section>

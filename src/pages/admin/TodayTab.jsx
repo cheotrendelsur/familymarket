@@ -1,8 +1,8 @@
-import { CheckCircle2, Clock, Lightbulb, Lock, Plus, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Clock, Lightbulb, Lock, Plus, XCircle } from 'lucide-react'
 import { useGame } from '../../context/GameContext'
 import { timeAgo } from '../../lib/time'
 import { sideLabel } from '../../lib/format'
-import { Countdown } from '../../components/Countdown'
+import { Countdown, OpensIn } from '../../components/Countdown'
 import MarketImage from '../../components/MarketImage'
 import { Skeleton } from '../../components/ui/Skeleton'
 import SuggestionsList from './SuggestionsList'
@@ -42,6 +42,9 @@ export default function TodayTab({ onGo }) {
     .filter((i) => i.state === 'open' && i.closes_at && Date.parse(i.closes_at) - now < DAY)
     .sort((a, b) => Date.parse(a.closes_at) - Date.parse(b.closes_at))
   const openCount = items.filter((i) => i.state === 'open').length
+  const upcoming = items
+    .filter((i) => i.state === 'upcoming')
+    .sort((a, b) => Date.parse(a.opens_at) - Date.parse(b.opens_at))
   const suggestions = pendingSuggestions || 0
   const allClear = marketsLoaded && pending.length === 0 && suggestions === 0
 
@@ -140,6 +143,30 @@ export default function TodayTab({ onGo }) {
             Sugerencias nuevas
           </SectionTitle>
           <SuggestionsList view="pending" />
+        </section>
+      )}
+
+      {upcoming.length > 0 && (
+        <section className="space-y-3">
+          <SectionTitle icon={CalendarClock} count={upcoming.length} tone="text-violet-700">
+            Próximos a abrir
+          </SectionTitle>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-card divide-y divide-gray-100">
+            {upcoming.map((item) => (
+              <div key={item.key} className="flex items-center gap-3 p-3.5">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-gray-900 leading-snug truncate">{item.title}</p>
+                  <OpensIn opensAt={item.opens_at} className="mt-1" />
+                </div>
+                <button
+                  onClick={() => actions.openNow(item.markets[0], item.kind === 'group')}
+                  className="px-3.5 py-2 rounded-xl bg-violet-50 text-violet-800 text-sm font-bold border border-violet-100 tap-feedback"
+                >
+                  Abrir ya
+                </button>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 

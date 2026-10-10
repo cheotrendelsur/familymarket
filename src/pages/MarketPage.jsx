@@ -6,6 +6,7 @@ import { useActivity } from '../hooks/useActivity'
 import { useMyPositions } from '../hooks/useMyPositions'
 import { buildPosition } from '../lib/portfolio'
 import { cents, sideLabel } from '../lib/format'
+import { closesLabel } from '../lib/time'
 import { yesPrice, noPrice } from '../lib/trading'
 import ActivityFeed from '../components/ActivityFeed'
 import ClosingBanner from '../components/ClosingBanner'
@@ -64,7 +65,13 @@ export default function MarketPage() {
   const yes = yesPrice(market)
   const no = noPrice(market)
   const open = market.state === 'open'
-  const item = { kind: 'single', state: market.state, market, closes_at: market.state === 'open' ? market.closes_at : null }
+  const item = {
+    kind: 'single',
+    state: market.state,
+    market,
+    closes_at: market.state === 'open' ? market.closes_at : null,
+    opens_at: market.state === 'upcoming' ? market.opens_at : null,
+  }
   const owned = positions.length > 0
 
   return (
@@ -96,6 +103,12 @@ export default function MarketPage() {
 
       {market.state === 'resolved' && <ResultBlock market={market} />}
       {market.state === 'pending' && <PendingBlock />}
+      {market.state === 'upcoming' && (
+        <div className="rounded-2xl bg-violet-50 border border-violet-200 p-4 text-center">
+          <p className="font-bold text-violet-900">Todavía no abre</p>
+          <p className="text-sm text-violet-800 mt-0.5">Se abre el {closesLabel(market.opens_at)}. Cuando llegue la hora podrás apostar.</p>
+        </div>
+      )}
       <StaffBar market={market} />
 
       <section className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">

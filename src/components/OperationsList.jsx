@@ -4,6 +4,7 @@ const LABELS = {
   BUY: { text: 'Compra', badge: 'bg-blue-100 text-blue-700' },
   SELL: { text: 'Venta', badge: 'bg-gray-200 text-gray-700' },
   RESOLVE: { text: 'Pago', badge: 'bg-green-100 text-green-700' },
+  REWARD: { text: 'Premio', badge: 'bg-amber-100 text-amber-700' },
 }
 
 /**
@@ -22,19 +23,21 @@ export default function OperationsList({ ops, emptyText = 'Sin operaciones' }) {
           <div key={op.id || `${op.at}-${i}`} className="px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-900 leading-snug">{op.question}</p>
+                <p className="text-sm font-semibold text-gray-900 leading-snug">{op.type === 'REWARD' ? 'Premio por un mercado sorpresa' : op.question}</p>
                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                   <span className={`text-[11px] font-bold rounded px-1.5 py-0.5 ${label.badge}`}>{label.text}</span>
-                  <span
+                  {op.type !== 'REWARD' && <span
                     className={`text-[11px] font-bold rounded px-1.5 py-0.5 ${
                       op.side === 'YES' ? 'bg-emerald-100 text-polygreen' : 'bg-rose-100 text-polyred'
                     }`}
                   >
                     {sideLabel(op.side)}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {fmtShares(op.shares)} acc. a {cents(op.price)}
-                  </span>
+                  </span>}
+                  {op.type !== 'REWARD' && (
+                    <span className="text-xs text-gray-500">
+                      {fmtShares(op.shares)} acc. a {cents(op.price)}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">

@@ -101,17 +101,19 @@ from ins;
 update public.profiles set username = 'lt_user_' || substr(email, 4, 2), is_admin = (email = 'lt_00@loadtest.invalid')
 where email like '%@loadtest.invalid';
 
--- Entre una ejecución y otra (la auditoría exige saldos 1000 y 0 movimientos del día):
-delete from public.markets; delete from public.transaction_logs; delete from public.notifications;
-delete from public.trade_requests; delete from public.admin_actions;
-update public.profiles set balance = 1000, tour_completed_at = null where email like '%@loadtest.invalid';
+-- Entre una ejecución y otra. ¡SOLO datos de prueba! El juego real puede estar en marcha (nunca borrar tablas enteras):
+delete from public.markets where question like '[TEST%' or question like '[AUDIT]%'
+   or created_by in (select id from public.profiles where email like '%@loadtest.invalid' or email like 'lt\_%@jugador.familymarket.invalid');
+delete from public.transaction_logs where user_id in (select id from public.profiles where email like '%@loadtest.invalid' or email like 'lt\_%@jugador.familymarket.invalid');
+delete from public.notifications where user_id in (select id from public.profiles where email like '%@loadtest.invalid' or email like 'lt\_%@jugador.familymarket.invalid');
+delete from public.trade_requests where user_id in (select id from public.profiles where email like '%@loadtest.invalid' or email like 'lt\_%@jugador.familymarket.invalid');
+delete from public.admin_actions where admin_id in (select id from public.profiles where email like '%@loadtest.invalid');
+delete from public.help_requests where name like 'lt\_%'; delete from public.signup_attempts;
+update public.profiles set balance = 1000, tour_completed_at = null, is_moderator = false where email like '%@loadtest.invalid';
 
--- Al terminar (cascada: perfiles, acciones, operaciones). Las pruebas de acceso (`loadtest.mjs access`) y de alta
--- (`ui-onboarding`) también crean cuentas lt_acc_* / lt_signup_* / lt.acc…@gmail.com:
+-- Al terminar (cascada: perfiles, acciones, operaciones, instantáneas). Las pruebas de acceso y de alta también crean cuentas lt_acc_* / lt_signup_* / lt_n* / lt_d* / lt_s*:
 delete from auth.users where email like '%@loadtest.invalid' or email like 'ltacc%+otra@gmail.com' or email like 'lt\_%@jugador.familymarket.invalid';
 delete from public.invited_emails where email like '%@loadtest.invalid' or email like 'lt.acc%@gmail.com';
-delete from public.signup_attempts;
-delete from public.networth_snapshots; select public._snapshot_networth(true);
 ```
 
 
@@ -243,3 +245,41 @@ código, tarjeta del dueño) y `tests/ui-onboarding.test.jsx` (alta real complet
 
 **Hallazgo corregido (019):** el proyecto tiene `pg_safeupdate`, que rechaza `UPDATE` sin `WHERE` para las funciones llamadas por la API. Las dos funciones del dueño que cambiaban la fila
 única de `signup_config` fallaban en producción con «UPDATE requires a WHERE clause»; las pruebas contra el servidor real lo detectaron (la prueba en modo demo no podía) y ahora llevan `where id`.
+
+
+# Fase 4 · Recuperar cuentas, deshabilitar jugadores, apertura programada y premio por mercado sorpresa (octubre 2026)
+
+## Recuperar el acceso (migración 020)
+Revisión del restablecer contraseña: a nivel de servidor funcionaba (la contraseña nueva entra, la vieja no, se cierran las sesiones), pero en la práctica fallaba por dos
+motivos reales: (1) los jugadores antiguos solo entraban con su **correo**, y al olvidarlo tampoco les servía su usuario; (2) quien no podía entrar **creaba otra cuenta**.
+Ahora: «Pedir ayuda» sin cuenta → el dueño restablece con un toque (la cuenta pasa a entrar con su **nombre de usuario**) y copia el mensaje; la persona cambia la contraseña
+temporal por la suya en Portafolio → Mi cuenta; y al registrarse se avisa de nombres parecidos. Pruebas: `loadtest.mjs accounts` (restablecer con conversión, entrada por usuario,
+sesión que ya no se renueva, contraseña propia, ayuda y deduplicación, nombres parecidos con y sin código), `tests/ui-accounts.test.jsx`.
+
+## Deshabilitar y eliminar jugadores
+Deshabilitado = fuera del ranking, la carrera, el perfil y la actividad; no puede entrar (bloqueo de la cuenta) **ni operar con la sesión que ya tenía** (comprar/vender lo rechazan);
+su nombre queda libre (`Nombre_off`) para que la persona se registre de nuevo; sus acciones en mercados abiertos se conservan; reversible. Eliminar definitivamente exige haberlo deshabilitado antes.
+No se puede deshabilitar ni eliminar al dueño. Pruebas en `loadtest.mjs accounts` (14 verificaciones sobre ranking, carrera, actividad, sesión abierta, login, cupo, nombre libre, rehabilitar con
+nombre ocupado/libre y eliminar).
+
+## Apertura programada (migración 021)
+`markets.opens_at` (nulo = se abre al crearse). Antes de la hora: `buy_shares`/`sell_shares` rechazan con «Este mercado todavía no abre» (se compara con `clock_timestamp()` ya con el candado tomado),
+`get_market_prices` entrega la hora para mostrar «Abre en…», y se puede reprogramar / abrir ya mientras no haya operaciones. Validaciones: apertura antes del cierre; una apertura en el pasado o en los
+próximos 30 s significa «abrir ya». Los mercados de varias opciones se programan completos. Pruebas: `loadtest.mjs schedule` (18) y la interfaz en `tests/ui-accounts.test.jsx`.
+
+## Premio por mercado sorpresa (migración 022) — cómo se eligió el porcentaje
+Simulación del volumen apostado por mercado (`scripts/calibrate.mjs`, jugadores con creencias propias, 300 mercados por celda; liquidez 2000):
+
+| Estilo de juego | 10 jugadores | 20 jugadores | 40 jugadores |
+|---|---|---|---|
+| relajado (apuestas de $5-40) | $466 | $882 | $1,604 |
+| normal ($10-100) | $1,387 | $2,626 | $5,037 |
+| intenso ($20-300) | $3,424 | $6,758 | $13,261 |
+
+Con un mercado sorpresa típico (volumen de ~$900 a ~$5,000) el **2 %** da **$18 a $100**; el tope de **$40** lo limita a ≈ 4 % del saldo inicial por persona y por mercado.
+Razones de «2 %, bolsa repartida, tope $40»: (a) 2 % = la comisión del juego, así la bolsa equivale a las comisiones que se quemaron en ese mercado y **no crea dinero nuevo** cuando las posiciones
+se mantienen hasta resolver; (b) repartida entre las personas ocultas evita que ocultar a muchos dispare la inflación; (c) el tope evita que un mercado enorme regale demasiado a quien no jugó;
+(d) quien no participa evita pagar comisiones y perder, así que el premio es un gesto, no un sueldo. Alternativas ajustables sin tocar código (Admin → Más): 1 % (más discreto), 3 % (más generoso), o
+modo «cada una» (cada persona oculta cobra el porcentaje completo).
+Pruebas: `loadtest.mjs reward` (27): reparto entre 2 y 1 persona, modo «cada una», tope, sin apuestas y porcentaje 0 no pagan, el dueño no cobra, el aviso no revela la pregunta, no cuenta como
+acierto, deshacer la resolución y anular el mercado lo devuelven en silencio, y la configuración real se restaura.

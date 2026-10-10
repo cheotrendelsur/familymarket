@@ -32,6 +32,12 @@ export function AuthProvider({ children }) {
       const { data, error } = await db.profile(userId)
       if (userIdRef.current !== userId) return null // cambió de usuario mientras cargaba
       if (!error && data) {
+        if (data.disabled_at) {
+          // Cuenta deshabilitada por el dueño: se cierra la sesión y se avisa en la pantalla de acceso.
+          store.set('fm_notice', 'Tu cuenta está deshabilitada. Pídele ayuda a Cheche.')
+          auth.signOut()
+          return null
+        }
         setProfile((prev) => {
           const next = { ...data, balance: Number(data.balance) }
           // Evita renderizar toda la app si nada cambió.
@@ -42,7 +48,9 @@ export function AuthProvider({ children }) {
             prev.username === next.username &&
             prev.is_admin === next.is_admin &&
             prev.is_moderator === next.is_moderator &&
-            prev.tour_completed_at === next.tour_completed_at
+            prev.tour_completed_at === next.tour_completed_at &&
+            prev.needs_password_change === next.needs_password_change &&
+            prev.disabled_at === next.disabled_at
           ) {
             return prev
           }
@@ -163,6 +171,7 @@ export function AuthProvider({ children }) {
       loading,
       profileError,
       needsUsername: !!profile && !profile.username,
+      needsPasswordChange: !!profile?.needs_password_change,
       // El dueño no necesita tutorial (puede repetirlo desde Portafolio si quiere).
       needsTour: !!profile && !!profile.username && !profile.is_admin && !profile.tour_completed_at && !tourLocal,
       completeTour,

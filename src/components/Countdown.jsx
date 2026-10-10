@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, Lock, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Clock, Lock, XCircle } from 'lucide-react'
 import { serverNow } from '../lib/clock'
 import { countdown } from '../lib/time'
 import { sideLabel } from '../lib/format'
@@ -55,8 +55,20 @@ export function Countdown({ closesAt, className = '', full = false }) {
   )
 }
 
+/** Pastilla "Abre en 2h 15m" para mercados con apertura programada. */
+export function OpensIn({ opensAt, className = '' }) {
+  const c = useCountdown(opensAt)
+  if (!c) return null
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-bold border rounded-full px-2 py-0.5 tabular-nums bg-violet-50 text-violet-700 border-violet-200 ${className}`}>
+      <CalendarClock size={12} /> {c.over ? 'Abriendo…' : `Abre en ${c.text}`}
+    </span>
+  )
+}
+
 /** Estado visible de una tarjeta: cuenta regresiva, "esperando resultado" o resultado. */
 export function StateBadge({ item, className = '' }) {
+  if (item.state === 'upcoming') return <OpensIn opensAt={item.opens_at} className={className} />
   if (item.state === 'pending') {
     return (
       <span

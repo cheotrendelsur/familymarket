@@ -20,6 +20,8 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | Pago al resolver | $1.00 por acción ganadora |
 | Tolerancia de precio | 5 % por defecto (ajustable); si otro jugador mueve el precio, un toque reintenta al precio nuevo |
 | Mercados múltiples | Varias opciones bajo un mismo tema (se crean juntas, de forma atómica; comparten foto y cierre). Solo puede ganar UNA opción: cada una nace con probabilidad **1/N** (la suma es 100 %) |
+| Apertura programada | Un mercado puede abrirse en una fecha y hora específicas (por defecto se abre al crearse). Hasta entonces los jugadores lo ven como «Próximamente» con cuenta regresiva y el servidor no deja apostar; se puede reprogramar o abrir ya mientras nadie haya operado |
+| Premio por mercado sorpresa | A quienes se les OCULTA un mercado se les paga automáticamente al resolverse (ver abajo) |
 | Cierre por fecha | Un mercado puede tener hora de cierre: cuenta regresiva, apuestas bloqueadas en el servidor y estado «esperando resultado» |
 | Filtro fantasma | Se puede **ocultar** un mercado a ciertos jugadores (sorpresas); se aplica en el servidor también al feed y a los perfiles |
 | Fotos | Cámara o galería; se recortan y comprimen en el celular (WebP, JPEG en Safari) antes de subirse al bucket público `market-images` |
@@ -66,10 +68,29 @@ Todo se hace desde el celular, sin correos, sin Google y sin pedirle datos a nad
   El código tiene 8 caracteres sin letras confusas (~850 mil millones de combinaciones) y más de 200 intentos fallidos en 10 minutos bloquean el registro un rato.
 - **Control del dueño** (misma tarjeta): ver/copiar el código, **cerrar el registro** cuando ya entraron todos (nadie nuevo entra ni con el código), **cambiar el código**
   (el anterior deja de servir; las cuentas existentes no se afectan) y poner un **máximo de jugadores** (por defecto 60).
-- **Contraseña olvidada:** no hay correo para recuperarla; el dueño la restablece en Admin → Gente → (jugador) → «Contraseña».
+- **Contraseña o usuario olvidado (sin crear otra cuenta):** en la pantalla de acceso, «¿Olvidaste tu usuario o tu contraseña?» manda una solicitud al dueño
+  (con nombre y una pista opcional). En **Admin → Gente** aparece la tarjeta **«Piden ayuda»** con los jugadores que podrían ser; con un toque el dueño
+  **restablece** y copia un mensaje para WhatsApp con *usuario + contraseña temporal*. Al restablecer, las cuentas antiguas (que entraban con correo) **pasan a entrar
+  con su nombre de usuario**, que es el que ven en el ranking. La persona entra, ve el aviso «contraseña temporal» y la cambia por la suya en **Portafolio → Mi cuenta**.
+  Al registrarse, si el nombre se parece a un jugador que ya existe (con el código correcto) se avisa para que no creen un duplicado.
 - **Opcional:** «Invitar por correo» (plegado en Gente) sigue existiendo para quien prefiera entrar con Google o con su correo; Google funciona solo si se activa en Supabase
   (la pantalla lo detecta sola y muestra el botón).
 - Nombres: de 3 a 20 letras, números o guion bajo, únicos sin importar mayúsculas (se avisa en vivo si el nombre está libre).
+- **Deshabilitar / eliminar jugadores** (Admin → Gente → jugador): *Deshabilitar* lo saca del ranking, la carrera, su perfil y la actividad; no puede entrar ni operar
+  (aunque tenga la sesión abierta) y su nombre queda libre (figura como `Nombre_off`); sus acciones en mercados abiertos se conservan y se puede **rehabilitar**.
+  *Eliminar para siempre* (solo a un jugador ya deshabilitado, en dos pasos) borra la cuenta y todos sus datos. Hay buscador de jugadores.
+
+### Premio por mercado sorpresa
+
+Cuando se oculta un mercado a alguien («Más opciones → Mercado sorpresa»), esa persona no puede participar. Para compensarla, **al resolverse el mercado recibe un premio automático**:
+
+- **Base:** el dinero total apostado en ese mercado (suma de las compras).
+- **Por defecto (recomendado):** una bolsa del **2 %** de esa base, **repartida en partes iguales** entre las personas a las que se les ocultó, con un **máximo de $40 por persona**.
+  2 % es justo la comisión del juego: la bolsa equivale a lo que se «quemó» en comisiones por ese mercado, así que casi no crea dinero nuevo.
+  Ejemplos: $1,000 apostados y 1 oculto → $20; $3,000 y 1 oculto → $40 (tope); $3,000 y 3 ocultos → $20 cada uno.
+- Ajustable por el dueño en **Admin → Más → Premio por mercado sorpresa**: porcentaje (0–20 %), tope por persona y modo («se reparte» o «cada una» = cada persona recibe el porcentaje completo).
+- Se paga dentro de la misma operación que resuelve el mercado (todo o nada); queda como «Premio» en su historial (no cuenta como acierto) y recibe un aviso **sin revelar la pregunta**.
+  Si se deshace la resolución o se anula el mercado, el premio se devuelve en silencio. No cobran el dueño, el creador del mercado ni jugadores deshabilitados.
 
 ### Panel de administración (dueño y moderadores)
 
@@ -136,7 +157,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…019). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…022). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -166,6 +187,9 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 017 | Horas guardadas según el orden real de ejecución (`clock_timestamp()` en operaciones, historial de precios y `resolved_at`) |
 | 018 | **Registro con código de la familia** (`signup_config`, `check_signup_code`, `username_available`, `signup_status`, gestión del dueño) y compuerta ampliada |
 | 019 | Corrección: `UPDATE` con `WHERE` en las funciones del registro (el proyecto usa `pg_safeupdate`) |
+| 020 | Recuperación de cuentas (pedir ayuda, restablecer pasa a usuario, cambiar mi contraseña), **deshabilitar / rehabilitar / eliminar** jugadores, aviso de nombres parecidos |
+| 021 | **Apertura programada** (`markets.opens_at`) + cuenta deshabilitada no puede operar (`_assert_active` en comprar/vender) |
+| 022 | **Premio por mercado sorpresa** (`REWARD`, aviso `HIDDEN_REWARD`, ajustes en `game_settings`) |
 
 ## Desarrollo
 

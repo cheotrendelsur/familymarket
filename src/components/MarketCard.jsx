@@ -1,9 +1,10 @@
 import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, ChevronRight, Flame, Lock, Sparkles, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ChevronRight, Flame, Lock, Sparkles, XCircle } from 'lucide-react'
 import { categoryOf } from '../lib/categories'
 import { yesPrice } from '../lib/trading'
 import { sideLabel } from '../lib/format'
+import { closesLabel } from '../lib/time'
 import ChanceRing from './ChanceRing'
 import MarketImage from './MarketImage'
 import PriceFlash from './ui/PriceFlash'
@@ -52,6 +53,14 @@ export function ResultBanner({ market }) {
   )
 }
 
+export function UpcomingBanner({ opensAt }) {
+  return (
+    <div className="rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 font-semibold bg-violet-50 border border-violet-200 text-violet-800 text-sm">
+      <CalendarClock size={16} /> Abre el {closesLabel(opensAt)}
+    </div>
+  )
+}
+
 export function PendingBanner() {
   return (
     <div className="rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 font-semibold bg-amber-50 border border-amber-200 text-amber-800 text-sm">
@@ -81,7 +90,7 @@ function MarketCard({ item, hot = false, onTrade }) {
           <h3 className="font-semibold text-[15px] leading-snug text-gray-900 line-clamp-2">{m.question}</h3>
           <div className="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap">
             <CategoryTag category={item.category} />
-            {item.state === 'open' && <StateBadge item={item} />}
+            {(item.state === 'open' || item.state === 'upcoming') && <StateBadge item={item} />}
             <Badges item={item} hot={hot} />
           </div>
         </div>
@@ -90,6 +99,7 @@ function MarketCard({ item, hot = false, onTrade }) {
 
       <div className="mt-3">
         {item.state === 'open' && <YesNoButtons market={m} onPick={onTrade} />}
+        {item.state === 'upcoming' && <UpcomingBanner opensAt={m.opens_at} />}
         {item.state === 'pending' && <PendingBanner />}
         {item.state === 'resolved' && <ResultBanner market={m} />}
       </div>
@@ -104,6 +114,7 @@ export const OptionRow = memo(function OptionRow({ market, onTrade, onOpen, rank
   const yes = yesPrice(market)
   const resolved = market.state === 'resolved'
   const pending = market.state === 'pending'
+  const upcoming = market.state === 'upcoming'
   return (
     <div className="flex items-center gap-2 py-2">
       <button onClick={onOpen} className="flex items-center gap-2 min-w-0 flex-1 text-left">
@@ -128,6 +139,8 @@ export const OptionRow = memo(function OptionRow({ market, onTrade, onOpen, rank
             <span className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-1 flex items-center gap-1">
               <Lock size={11} /> Cerrado
             </span>
+          ) : upcoming ? (
+            <span className="text-[11px] font-bold text-violet-700 bg-violet-50 rounded-full px-2 py-1">Próximamente</span>
           ) : (
             <YesNoButtons market={market} onPick={onTrade} compact />
           )}

@@ -117,6 +117,67 @@ const tomorrowAt = (h) => {
   return d
 }
 
+/** Fecha y hora de APERTURA con atajos. Vacío = se abre en el momento en que se crea. */
+export function OpensAtField({ value, onChange, locked = false }) {
+  const [custom, setCustom] = useState(false)
+  const presets = useMemo(
+    () => [
+      ['En 1 hora', () => inMinutes(60)],
+      ['Hoy 6 pm', () => todayAt(18)],
+      ['Mañana 8 am', () => tomorrowAt(8)],
+      ['Mañana 6 pm', () => tomorrowAt(18)],
+    ],
+    []
+  )
+  const iso = fromLocalInput(value)
+  return (
+    <div className="space-y-2.5">
+      <div className="-mx-1 px-1 overflow-x-auto scrollbar-hide">
+        <div className="flex gap-2 w-max pr-2">
+          <button
+            type="button"
+            onClick={() => {
+              onChange('')
+              setCustom(false)
+            }}
+            disabled={locked}
+            aria-pressed={!value}
+            className={`px-3.5 py-2 rounded-full text-sm font-semibold flex-shrink-0 border ${!value ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}
+          >
+            Al crearse (ahora)
+          </button>
+          {presets.map(([label, make]) => (
+            <button
+              key={label}
+              type="button"
+              disabled={locked}
+              onClick={() => onChange(toLocalInput(make().toISOString()))}
+              className="px-3.5 py-2 rounded-full bg-white border border-gray-200 text-sm font-semibold text-gray-600 flex-shrink-0 disabled:opacity-50"
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => setCustom(!custom)}
+            aria-expanded={custom}
+            className="px-3.5 py-2 rounded-full bg-white border border-gray-200 text-sm font-semibold text-polyblue flex-shrink-0 disabled:opacity-50"
+          >
+            Otra fecha…
+          </button>
+        </div>
+      </div>
+      {custom && <input type="datetime-local" aria-label="Fecha y hora de apertura" value={value} onChange={(e) => onChange(e.target.value)} className={inputClass} />}
+      <p className="text-xs text-gray-500">
+        {iso
+          ? `Se abrirá el ${closesLabel(iso)}. Hasta entonces los jugadores lo ven como «Próximamente» y no pueden apostar.`
+          : 'Se abre en el momento en que lo publicas.'}
+      </p>
+    </div>
+  )
+}
+
 /** Fecha y hora de cierre con atajos. Vacío = el mercado no cierra solo. */
 export function ClosesAtField({ value, onChange }) {
   const [custom, setCustom] = useState(false)

@@ -121,6 +121,11 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeItems, query, category, sort]
   )
+  const upcoming = useMemo(
+    () => activeItems.filter((i) => i.state === 'upcoming' && matches(i)).sort((a, b) => Date.parse(a.opens_at) - Date.parse(b.opens_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeItems, query, category]
+  )
   const pending = useMemo(
     () => activeItems.filter((i) => i.state === 'pending' && matches(i)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,7 +156,7 @@ export default function HomePage() {
   const showFeatured = !filtering && trending.length >= 2
 
   const nothingAtAll = marketsLoaded && activeItems.length === 0 && resolvedItems.length === 0
-  const noResults = marketsLoaded && !nothingAtAll && open.length + pending.length + resolved.length === 0
+  const noResults = marketsLoaded && !nothingAtAll && open.length + upcoming.length + pending.length + resolved.length === 0
 
   const renderItem = (item) =>
     item.kind === 'group' ? (
@@ -222,8 +227,14 @@ export default function HomePage() {
           )}
 
           {open.length > 0 && <Grid>{open.map(renderItem)}</Grid>}
-          {open.length === 0 && !noResults && pending.length === 0 && resolved.length > 0 && (
+          {open.length === 0 && !noResults && upcoming.length === 0 && pending.length === 0 && resolved.length > 0 && (
             <p className="text-center text-sm text-gray-400 py-6">No hay mercados abiertos ahora mismo.</p>
+          )}
+
+          {upcoming.length > 0 && (
+            <Section title="🗓️ Próximamente" count={upcoming.length} tone="text-violet-600">
+              <Grid>{upcoming.map(renderItem)}</Grid>
+            </Section>
           )}
 
           {pending.length > 0 && (

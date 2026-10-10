@@ -70,6 +70,8 @@ export function friendlyAuthError(error, context = 'password') {
   const msg = (error && (error.message || String(error))) || ''
   if (/Invalid login credentials/i.test(msg)) return 'Usuario o contraseña incorrectos. Si lo olvidaste, pídele a Cheche que te la restablezca.'
   // La base de datos solo deja crear cuentas con el código de la familia o con un correo invitado (migraciones 015 y 018).
+  if (/banned|user_banned/i.test(msg)) return 'Esta cuenta está deshabilitada. Pídele ayuda a Cheche.'
+  if (/should be different from the old password|same_password/i.test(msg)) return 'Elige una contraseña distinta a la temporal.'
   if (/BAD_CODE/i.test(msg)) return 'Ese código no es correcto. Revisa el mensaje del grupo de la familia.'
   if (/SIGNUP_CLOSED/i.test(msg)) return 'El registro está cerrado por ahora. Pídele a Cheche que lo abra.'
   if (/SIGNUP_FULL/i.test(msg)) return 'Ya se completó el cupo de jugadores.'

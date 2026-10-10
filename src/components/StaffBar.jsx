@@ -22,6 +22,7 @@ export default function StaffBar({ market = null, group = null }) {
   const unresolved = list.filter((m) => m.state !== 'resolved')
   const allResolved = unresolved.length === 0
   const anyOpen = list.some((m) => m.state === 'open')
+  const anyUpcoming = list.some((m) => m.state === 'upcoming')
 
   return (
     <section className="rounded-2xl border-2 border-dashed border-polyblue/40 bg-blue-50/50 p-4 space-y-3" aria-label="Atajos de administración">
@@ -29,7 +30,13 @@ export default function StaffBar({ market = null, group = null }) {
         <ShieldCheck size={14} /> Solo tú ves esto
       </p>
 
-      {!allResolved && !group && (
+      {anyUpcoming && (
+        <button onClick={() => actions.openNow(first, !!group)} className="w-full flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 rounded-xl font-bold shadow-md shadow-violet-500/20 tap-feedback">
+          Abrir ya
+        </button>
+      )}
+
+      {!allResolved && !group && !anyUpcoming && (
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => actions.resolve(market, 'YES')} className="flex items-center justify-center gap-1.5 bg-polygreen text-white py-3.5 rounded-xl font-bold shadow-md shadow-green-500/20 tap-feedback">
             <CheckCircle size={19} strokeWidth={2.5} /> Gana {sideLabel('YES')}
@@ -40,7 +47,7 @@ export default function StaffBar({ market = null, group = null }) {
         </div>
       )}
 
-      {!allResolved && group && (
+      {!allResolved && group && !anyUpcoming && (
         <div className="space-y-2">
           <p className="text-sm font-bold text-gray-700">¿Quién ganó?</p>
           <div className="grid gap-2">

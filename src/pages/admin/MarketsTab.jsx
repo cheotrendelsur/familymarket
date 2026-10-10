@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CheckCircle, Lock, MoreHorizontal, Pencil, RotateCcw, Trash2, Trophy, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle, Lock, MoreHorizontal, Pencil, RotateCcw, Trash2, Trophy, XCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useGame } from '../../context/GameContext'
 import { StateBadge } from '../../components/Countdown'
@@ -11,6 +11,7 @@ import { useManage } from '../../hooks/useManage'
 import { useMarketActions } from './useMarketActions'
 
 const FILTERS = [
+  ['upcoming', 'Próximos'],
   ['open', 'Abiertos'],
   ['pending', 'Por resolver'],
   ['resolved', 'Resueltos'],
@@ -30,8 +31,14 @@ function ActionRow({ icon: Icon, label, hint, tone = 'text-gray-800', onClick })
   )
 }
 
-function MarketCard({ market, onMore, onResolve }) {
-  const pseudo = { kind: 'single', state: market.state, market, closes_at: market.state === 'open' ? market.closes_at : null }
+function MarketCard({ market, onMore, onResolve, onOpenNow }) {
+  const pseudo = {
+    kind: 'single',
+    state: market.state,
+    market,
+    closes_at: market.state === 'open' ? market.closes_at : null,
+    opens_at: market.state === 'upcoming' ? market.opens_at : null,
+  }
   return (
     <div className={`border rounded-2xl p-4 ${market.state === 'resolved' ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200 shadow-card'}`}>
       <div className="flex items-start gap-3">
@@ -51,7 +58,11 @@ function MarketCard({ market, onMore, onResolve }) {
         </button>
       </div>
 
-      {market.state !== 'resolved' ? (
+      {market.state === 'upcoming' ? (
+        <button onClick={() => onOpenNow(market)} className="w-full mt-3 flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 rounded-xl font-bold shadow-md shadow-violet-500/20 tap-feedback">
+          Abrir ya
+        </button>
+      ) : market.state !== 'resolved' ? (
         <div className="grid grid-cols-2 gap-2 mt-3">
           <button onClick={() => onResolve(market, 'YES')} className="flex items-center justify-center gap-1.5 bg-polygreen text-white py-3.5 rounded-xl font-bold shadow-md shadow-green-500/20 tap-feedback">
             <CheckCircle size={19} strokeWidth={2.5} /> Gana {sideLabel('YES')}
@@ -114,7 +125,7 @@ export default function MarketsTab() {
   const [pickWinner, setPickWinner] = useState(null) // lista de opciones de un grupo
 
   const counts = useMemo(() => {
-    const c = { open: 0, pending: 0, resolved: 0 }
+    const c = { upcoming: 0, open: 0, pending: 0, resolved: 0 }
     for (const m of markets) c[m.state] += 1
     return c
   }, [markets])
@@ -162,20 +173,20 @@ export default function MarketsTab() {
 
       <div className="space-y-3">
         {view.singles.map((m) => (
-          <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} />
+          <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
         ))}
         {view.groups.map(([gid, list]) => (
           <div key={gid} className="bg-blue-50/50 border border-blue-100 rounded-3xl p-3 space-y-3">
             <div className="flex items-center justify-between gap-2 px-1">
               <h3 className="font-extrabold text-gray-900 leading-snug">{list[0].group_topic}</h3>
-              {filter !== 'resolved' && (
+              {filter !== 'resolved' && filter !== 'upcoming' && (
                 <button onClick={() => setPickWinner(list)} className="text-xs font-bold text-white bg-polygreen rounded-full px-3 py-2 flex-shrink-0 flex items-center gap-1 tap-feedback">
                   <Trophy size={13} /> ¿Quién ganó?
                 </button>
               )}
             </div>
             {list.map((m) => (
-              <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} />
+              <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
             ))}
           </div>
         ))}
@@ -185,6 +196,12 @@ export default function MarketsTab() {
         <Sheet open onClose={() => setMore(null)} title={more.group_topic ? `${more.group_topic} — ${more.question}` : more.question} subtitle="Acciones">
           <div className="divide-y divide-gray-100 pb-3">
             <ActionRow icon={Pencil} label="Editar" hint="Texto, foto, categoría, fecha de cierre" onClick={run(actions.edit)} />
+            {more.state === 'upcoming' && (
+              <ActionRow icon={CalendarClock} label="Abrir ahora" hint="Los jugadores ya podrán apostar" tone="text-violet-700" onClick={run((m) => actions.openNow(m, false))} />
+            )}
+            {more.state === 'upcoming' && more.group_id && (
+              <ActionRow icon={CalendarClock} label="Abrir ahora todo el grupo" tone="text-violet-700" onClick={run((m) => actions.openNow(m, true))} />
+            )}
             {more.state === 'open' && (
               <ActionRow icon={Lock} label="Cerrar apuestas ahora" hint="Queda esperando el resultado" tone="text-amber-700" onClick={run((m) => actions.closeNow(m, false))} />
             )}

@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CheckCircle2, ChevronRight, Lock, SearchX, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ChevronRight, Lock, SearchX, XCircle } from 'lucide-react'
 import { useGame } from '../context/GameContext'
 import { useActivity } from '../hooks/useActivity'
 import { useMyPositions } from '../hooks/useMyPositions'
 import { buildPosition } from '../lib/portfolio'
 import { sideLabel } from '../lib/format'
+import { closesLabel } from '../lib/time'
 import { yesPrice } from '../lib/trading'
 import ActivityFeed from '../components/ActivityFeed'
 import ClosingBanner from '../components/ClosingBanner'
@@ -23,6 +24,7 @@ function OptionLine({ market, rank, onTrade, onOpen, mine }) {
   const yes = yesPrice(market)
   const resolved = market.state === 'resolved'
   const pending = market.state === 'pending'
+  const upcoming = market.state === 'upcoming'
   return (
     <div className="p-4">
       <div className="flex items-center gap-3">
@@ -54,6 +56,10 @@ function OptionLine({ market, rank, onTrade, onOpen, mine }) {
         ) : pending ? (
           <div className="flex items-center justify-center gap-2 py-2 rounded-xl font-semibold text-sm bg-amber-50 text-amber-800">
             <Lock size={15} /> Apuestas cerradas
+          </div>
+        ) : upcoming ? (
+          <div className="flex items-center justify-center gap-2 py-2 rounded-xl font-semibold text-sm bg-violet-50 text-violet-800">
+            <CalendarClock size={15} /> Abre el {closesLabel(market.opens_at)}
           </div>
         ) : (
           <YesNoButtons market={market} onPick={onTrade} />

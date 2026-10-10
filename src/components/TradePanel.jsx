@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ChevronDown, Lock, Loader2, RefreshCw, Trophy, Zap } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, Lock, Loader2, RefreshCw, Trophy, Zap } from 'lucide-react'
 import { db, rpc } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useGame } from '../context/GameContext'
 import { useConfirm } from './ConfirmDialog'
-import { Countdown } from './Countdown'
+import { Countdown, OpensIn } from './Countdown'
+import { closesLabel } from '../lib/time'
 import {
   maxAvgPrice,
   minAvgPrice,
@@ -242,17 +243,21 @@ export default function TradePanel({ marketId, initialSide = 'YES', initialMode 
   // Mercado que ya no admite operaciones
   if (!open) {
     const pending = market.state === 'pending'
+    const upcoming = market.state === 'upcoming'
     return (
       <div className="text-center py-8">
-        <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-          <Lock size={30} className="text-amber-600 animate-lock-snap" />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${upcoming ? 'bg-violet-50' : 'bg-amber-50'}`}>
+          {upcoming ? <CalendarClock size={30} className="text-violet-600" /> : <Lock size={30} className="text-amber-600 animate-lock-snap" />}
         </div>
-        <h3 className="font-bold text-lg text-gray-900 mb-1">{pending ? 'Apuestas cerradas' : 'Mercado resuelto'}</h3>
+        <h3 className="font-bold text-lg text-gray-900 mb-1">{upcoming ? 'Todavía no abre' : pending ? 'Apuestas cerradas' : 'Mercado resuelto'}</h3>
         <p className="text-gray-500 text-sm">
-          {pending
-            ? 'Ya pasó la hora de cierre. Estamos esperando el resultado.'
-            : `Resultado: ${sideLabel(market.outcome)}. Ya no se puede operar.`}
+          {upcoming
+            ? `Se abre el ${closesLabel(market.opens_at)}. Vuelve entonces para apostar.`
+            : pending
+              ? 'Ya pasó la hora de cierre. Estamos esperando el resultado.'
+              : `Resultado: ${sideLabel(market.outcome)}. Ya no se puede operar.`}
         </p>
+        {upcoming && <OpensIn opensAt={market.opens_at} className="mt-3" />}
       </div>
     )
   }

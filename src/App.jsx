@@ -7,6 +7,7 @@ import { ConfirmProvider } from './components/ConfirmDialog'
 import ErrorBoundary from './components/ErrorBoundary'
 import BottomNav from './components/BottomNav'
 import CelebrationHost from './components/CelebrationHost'
+import { PasswordBanner } from './components/ChangePasswordSheet'
 import Navbar from './components/Navbar'
 import PageLoader from './components/PageLoader'
 import StatusBanner from './components/StatusBanner'
@@ -74,6 +75,7 @@ function AppLayout() {
           <Navbar />
           <main className="app-main">
             <StatusBanner />
+            <PasswordBanner />
             <ScrollToTop />
             <Suspense fallback={<PageLoader />}>
               <Routes>

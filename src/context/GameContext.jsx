@@ -24,7 +24,7 @@ const signatureOf = (rows) =>
   rows
     .map(
       (r) =>
-        `${r.id}:${r.yes_pool}:${r.no_pool}:${r.closed}:${r.outcome}:${r.closes_at}:${r.static_rev}:${r.trades_24h}:${r.traders_24h}:${r.trades_total}`
+        `${r.id}:${r.yes_pool}:${r.no_pool}:${r.closed}:${r.outcome}:${r.closes_at}:${r.opens_at}:${r.static_rev}:${r.trades_24h}:${r.traders_24h}:${r.trades_total}`
     )
     .join('|')
 
@@ -77,14 +77,14 @@ export function GameProvider({ children }) {
     }
   }, [user])
 
-  // Configuración del juego (fee, límites...) — se lee una vez.
-  useEffect(() => {
-    if (!ready) return undefined
-    let cancelled = false
-    db.gameSettings()
-      .then((data) => {
-        if (cancelled || !data) return
-        setConfig({
+  // Configuración del juego (fee, límites, premio de mercados sorpresa...) — se lee al entrar y cuando el dueño la cambia.
+  const refreshConfig = useCallback(
+    () =>
+      db
+        .gameSettings()
+        .then((data) => {
+          if (!data) return
+          setConfig({
           daily_limit: Number(data.daily_limit),
           fee_rate: Number(data.fee_rate),
           initial_liquidity: Number(data.initial_liquidity),
@@ -92,13 +92,17 @@ export function GameProvider({ children }) {
           min_price: Number(data.min_price),
           max_price: Number(data.max_price),
           min_trade: Number(data.min_trade),
+          hidden_reward_pct: Number(data.hidden_reward_pct ?? 0.02),
+          hidden_reward_cap: Number(data.hidden_reward_cap ?? 40),
+          hidden_reward_mode: data.hidden_reward_mode || 'shared',
+          })
         })
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [ready])
+        .catch(() => {}),
+    []
+  )
+  useEffect(() => {
+    if (ready) refreshConfig()
+  }, [ready, refreshConfig])
 
   // ---------------------------------------------------------------- sesión
   const enqueueNotifications = useCallback((list) => {
@@ -199,9 +203,12 @@ export function GameProvider({ children }) {
     const now = serverNow()
     let next = Infinity
     for (const p of prices) {
-      if (p.closed || !p.closes_at) continue
-      const t = Date.parse(p.closes_at)
-      if (t > now && t < next) next = t
+      if (p.closed) continue
+      for (const at of [p.closes_at, p.opens_at]) {
+        if (!at) continue
+        const t = Date.parse(at)
+        if (t > now && t < next) next = t
+      }
     }
     const delay = Math.min(next === Infinity ? 60000 : next - now + 300, 60000)
     const id = setTimeout(() => setTick(serverNow()), Math.max(delay, 300))
@@ -244,6 +251,7 @@ export function GameProvider({ children }) {
         closed: p.closed,
         outcome: p.outcome,
         closes_at: p.closes_at,
+        opens_at: p.opens_at,
         trades_24h: p.trades_24h,
         traders_24h: p.traders_24h,
         trades_total: p.trades_total,
@@ -289,6 +297,7 @@ export function GameProvider({ children }) {
       dismissCelebration,
       refreshMarkets,
       refreshSession,
+      refreshConfig,
       applyTradeResult,
     }),
     [
@@ -309,6 +318,7 @@ export function GameProvider({ children }) {
       dismissCelebration,
       refreshMarkets,
       refreshSession,
+      refreshConfig,
       applyTradeResult,
     ]
   )

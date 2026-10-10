@@ -21,12 +21,14 @@ export function groupMarkets(markets) {
 
 /**
  * Estado de un mercado respecto al reloj:
+ *  · upcoming todavía no abre (apertura programada)
  *  · open     se puede operar
  *  · pending  ya pasó la hora de cierre, falta que alguien lo resuelva
  *  · resolved ya tiene resultado
  */
 export function marketState(market, nowMs) {
   if (market.closed) return 'resolved'
+  if (market.opens_at && nowMs < Date.parse(market.opens_at)) return 'upcoming'
   if (market.closes_at && nowMs >= Date.parse(market.closes_at)) return 'pending'
   return 'open'
 }
@@ -71,6 +73,7 @@ export function buildItems(markets, nowMs) {
     image_color: m.image_color,
     created_at: m.created_at,
     closes_at: m.state === 'open' ? m.closes_at : null,
+    opens_at: m.state === 'upcoming' ? m.opens_at : null,
     state: m.state,
     resolved_at: m.resolved_at,
     score: Number(m.score) || 0,
@@ -83,7 +86,12 @@ export function buildItems(markets, nowMs) {
     const options = [...list].sort((a, b) => yesPrice(b) - yesPrice(a))
     const first = options[0]
     const open = options.filter((m) => m.state === 'open')
+    const upcoming = options.filter((m) => m.state === 'upcoming')
     const pending = options.filter((m) => m.state === 'pending')
+    const opensAt = upcoming
+      .map((m) => m.opens_at)
+      .filter(Boolean)
+      .sort()[0]
     const closesAt = open
       .map((m) => m.closes_at)
       .filter(Boolean)
@@ -108,7 +116,8 @@ export function buildItems(markets, nowMs) {
       image_color: options.find((m) => m.image_color)?.image_color || null,
       created_at: created,
       closes_at: closesAt || null,
-      state: open.length ? 'open' : pending.length ? 'pending' : 'resolved',
+      opens_at: open.length ? null : opensAt || null,
+      state: open.length ? 'open' : upcoming.length ? 'upcoming' : pending.length ? 'pending' : 'resolved',
       resolved_at: resolvedAt || null,
       score: options.reduce((s, m) => s + (Number(m.score) || 0), 0),
       trades_24h: options.reduce((s, m) => s + (Number(m.trades_24h) || 0), 0),
