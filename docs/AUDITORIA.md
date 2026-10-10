@@ -302,3 +302,28 @@ cada una (acceso, registro, inicio, mercado, grupo, ranking, portafolio, sugerir
 --target=safari14,chrome80`; no hay APIs sin respaldo (WebP→JPEG en Safari, portapapeles con alternativa, `randomUUID` con alternativa, `vibrate` y `AudioContext` con respaldo, `100dvh` con alternativa,
 `safe-area-inset`, `viewport-fit=cover`, iconos `apple-touch-icon`, manifest PWA). Límite honesto: se probó con Chrome emulando teléfonos, no con un iPhone físico (Safari de verdad usa otro motor);
 por eso se verificó además la sintaxis y las APIs contra Safari 14.
+
+
+# Fase 6 · Moderadores con decisión final y gráficas que fluyen (octubre 2026, con el juego ya en marcha)
+
+## Moderadores: cerrar y resolver cualquier mercado (migración 024)
+Pedido del dueño: un moderador puede **cerrar las apuestas y tomar la decisión final de cualquier mercado**. Servidor: `resolve_market` ya no exige haberlo creado; `staff_update_market` deja a un moderador ajeno
+**solo** poner `closes_at` ya (o en ≤ 2 minutos): no puede alargar el cierre (sería reabrirlo), ni cambiar texto/foto/categoría/apertura, ni mezclar cambios. Editar sigue siendo del creador y del dueño; deshacer una
+resolución y anular siguen siendo solo del dueño; un jugador normal no puede nada de esto. Interfaz: `useManage` separa `canManage` (cerrar y resolver: todo el staff) de `canEdit` (editar y «Abrir ya»: dueño y creador);
+la barra de atajos, Hoy y Mercados muestran todo al moderador y le explican «lo creó otra persona: puedes cerrar y decidir el resultado, pero no editarlo».
+Verificado en el servidor real SIN dejar datos (transacción que se deshace): el moderador no edita, no alarga, no mezcla y no toca la apertura de un mercado ajeno; sí lo cierra (nadie más compra), sí lo resuelve y el pago
+y el aviso llegan; no deshace ni anula; edita lo suyo; el dueño deshace; un jugador normal no cierra ni resuelve. UI: `tests/ui-mod-own.test.jsx` (5).
+
+## Gráficas: causa del problema al cambiar de filtro y arreglo
+**Causa real:** `usePolling` solo ejecutaba la carga al montar y cada N segundos; al cambiar el rango (1H/6H/1D/Todo) la función cambiaba pero **nadie volvía a pedir el dato hasta el siguiente refresco** (25 s en
+mercados, 45 s en la carrera): el gráfico quedaba en esqueleto o con el rango anterior; además una respuesta vieja que llegaba tarde podía pisar a la nueva y un fallo dejaba el esqueleto para siempre. Además, la carrera de
+patrimonio no tenía punto de anclaje (un rango sin operaciones salía vacío) y las marcas del eje eran del tipo 10:37 · 11:07.
+**Arreglo:** hook `useSeries` (pide al instante al cambiar la clave, la última petición gana, conserva el dato anterior atenuado con «Cargando…», error con «Reintentar»), `usePolling` con `immediate:false`,
+ejes de tiempo en horas redondas locales (`timeAxis`) y de dinero con marcas redondas (`moneyScale`, `axisMoney`), la línea se extiende hasta «ahora» o hasta el final de la ventana, y la carrera de patrimonio ahora
+también trae el punto de anclaje por jugador. Altura fija (sin saltos). Aplicado a las 4 gráficas: mercado, mercado múltiple, carrera de patrimonio y portafolio.
+Pruebas: `tests/charts.test.jsx` (7: carga inmediata al cambiar de filtro, dato anterior conservado, respuesta vieja ignorada, error y reintento, ejes) y recorrido táctil en Chrome emulando iPhone SE y Pixel 8
+en 4 pantallas × 6 cambios de filtro + cambios rápidos seguidos: 66/66, cada rango se dibuja en ~0.2 s sin errores de consola.
+
+## Portafolio de cada jugador (nuevo)
+`get_player_networth(p_user_id, p_since, p_max_points)` (solo jugadores activos, con punto de anclaje) y el componente `PortfolioChart`: total (efectivo + apuestas) en el tiempo, línea de efectivo, línea punteada del
+dinero inicial, cuánto subió o bajó en el rango y tooltip con total / efectivo / en apuestas. Aparece en **Portafolio → «Mi portafolio»** y en el **perfil de cada jugador** (Ranking → tocar un jugador).

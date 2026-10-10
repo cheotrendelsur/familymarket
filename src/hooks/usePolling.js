@@ -7,9 +7,10 @@ import { useCallback, useEffect, useRef } from 'react'
  *  · refresco inmediato al volver a primer plano o recuperar la conexión
  *  · backoff exponencial (hasta ×5) si el servidor falla o está saturado
  *  · nunca solapa dos ejecuciones
+ * Con `immediate: false` no ejecuta nada al montar (el llamador ya cargó el dato) y empieza a esperar el primer intervalo.
  * Devuelve `refresh()` para forzar una actualización manual.
  */
-export function usePolling(callback, { interval = 12000, enabled = true } = {}) {
+export function usePolling(callback, { interval = 12000, enabled = true, immediate = true } = {}) {
   const callbackRef = useRef(callback)
   const runningRef = useRef(false)
   const failuresRef = useRef(0)
@@ -55,7 +56,8 @@ export function usePolling(callback, { interval = 12000, enabled = true } = {}) 
       tick()
     }
 
-    run().finally(schedule)
+    if (immediate) run().finally(schedule)
+    else schedule()
     document.addEventListener('visibilitychange', wake)
     window.addEventListener('online', wake)
     return () => {
@@ -64,7 +66,7 @@ export function usePolling(callback, { interval = 12000, enabled = true } = {}) 
       document.removeEventListener('visibilitychange', wake)
       window.removeEventListener('online', wake)
     }
-  }, [enabled, interval, run])
+  }, [enabled, interval, immediate, run])
 
   return { refresh: run }
 }

@@ -32,9 +32,9 @@ function SectionTitle({ icon: Icon, children, count, tone = 'text-gray-500' }) {
 /** Pantalla de inicio del panel: solo lo que hay que hacer ahora. */
 export default function TodayTab({ onGo }) {
   const { items: allItems, marketsLoaded, pendingSuggestions, now } = useGame()
-  const { canManageItem, isOwner } = useManage()
+  const { canManageItem, canEditItem, isOwner } = useManage()
   const actions = useMarketActions()
-  // El moderador solo ve (y maneja) lo que él creó.
+  // Dueño y moderadores ven y pueden cerrar/resolver todos los mercados.
   const items = allItems.filter(canManageItem)
 
   const pending = items.filter((i) => i.state === 'pending')
@@ -66,7 +66,7 @@ export default function TodayTab({ onGo }) {
       </div>
 
       {!isOwner && (
-        <p className="text-xs text-gray-500 -mt-3">Como moderador, aquí ves y manejas solo los mercados que tú creaste.</p>
+        <p className="text-xs text-gray-500 -mt-3">Como moderador puedes cerrar las apuestas y decidir el resultado de cualquier mercado. Editar, solo los que tú creaste.</p>
       )}
 
       {allClear && (
@@ -158,12 +158,14 @@ export default function TodayTab({ onGo }) {
                   <p className="font-semibold text-gray-900 leading-snug truncate">{item.title}</p>
                   <OpensIn opensAt={item.opens_at} className="mt-1" />
                 </div>
-                <button
-                  onClick={() => actions.openNow(item.markets[0], item.kind === 'group')}
-                  className="px-3.5 py-2 rounded-xl bg-violet-50 text-violet-800 text-sm font-bold border border-violet-100 tap-feedback"
-                >
-                  Abrir ya
-                </button>
+                {canEditItem(item) && (
+                  <button
+                    onClick={() => actions.openNow(item.markets[0], item.kind === 'group')}
+                    className="px-3.5 py-2 rounded-xl bg-violet-50 text-violet-800 text-sm font-bold border border-violet-100 tap-feedback"
+                  >
+                    Abrir ya
+                  </button>
+                )}
               </div>
             ))}
           </div>

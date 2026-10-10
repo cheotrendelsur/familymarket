@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Component, useMemo, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { rpc } from '../lib/api'
 import { serverNow } from '../lib/clock'
-import { usePolling } from '../hooks/usePolling'
+import { fullTime, timeAxis } from '../lib/chartTime'
+import { useSeries } from '../hooks/useSeries'
 
-const RANGES = [
+export const RANGES = [
   { id: '1h', label: '1H', ms: 3600e3 },
   { id: '6h', label: '6H', ms: 6 * 3600e3 },
   { id: '1d', label: '1D', ms: 24 * 3600e3 },
@@ -33,77 +34,128 @@ export function RangeTabs({ value, onChange }) {
   )
 }
 
-const sinceFor = (range) => {
+/** Desde cuándo pedir los datos para un rango (ISO) o null = todo el historial. */
+export const sinceFor = (range) => {
   const r = RANGES.find((x) => x.id === range)
   return r?.ms ? new Date(serverNow() - r.ms).toISOString() : null
 }
 
-// Con menos de ~36 h de datos se muestra la hora; con más, el día.
-export const tickFormat = (spanMs) => (t) => {
-  const d = new Date(t)
-  return spanMs < 36 * 3600e3
-    ? d.toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
-}
-
-const fullTime = (t) =>
-  new Date(t).toLocaleString('es-VE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
-
-function useHistory(fetcher, deps, { live }) {
-  const [rows, setRows] = useState(null)
-  const load = useCallback(async () => {
-    setRows(await fetcher())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
-  useEffect(() => {
-    setRows(null)
-  }, deps) // eslint-disable-line react-hooks/exhaustive-deps
-  usePolling(load, { interval: 25000, enabled: live })
-  useEffect(() => {
-    if (!live) load().catch(() => {})
-  }, [live, load])
-  return rows
-}
-
-function EmptyChart({ text }) {
+/** Marco fijo de la gráfica: misma altura siempre (sin saltos) y atenuado mientras llega el rango nuevo. */
+export function ChartFrame({ height, busy = false, children }) {
   return (
-    <div className="h-[200px] flex items-center justify-center text-sm text-gray-400 bg-gray-50 rounded-2xl">{text}</div>
+    <div className={`relative -mx-1 transition-opacity duration-200 ${busy ? 'opacity-50' : ''}`} style={{ height }} aria-busy={busy}>
+      {children}
+      {busy && (
+        <span className="absolute top-1 right-3 text-[11px] font-semibold text-gray-500 bg-white/90 rounded-full px-2 py-0.5">Cargando…</span>
+      )}
+    </div>
   )
 }
 
+export function EmptyChart({ text, actionLabel, onAction }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-2 text-center text-sm text-gray-400 bg-gray-50 rounded-2xl px-6">
+      <p>{text}</p>
+      {actionLabel && (
+        <button onClick={onAction} className="text-xs font-bold text-polyblue px-3 py-1.5 rounded-full bg-white border border-gray-200">
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Si una gráfica fallara por un dato inesperado, que no se caiga toda la pantalla: solo esa gráfica
+ * muestra «No se pudo mostrar» con un botón para reintentar.
+ */
+export class ChartBoundary extends Component {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="h-[200px]">
+        <EmptyChart text="No se pudo mostrar el gráfico" actionLabel="Reintentar" onAction={() => this.setState({ failed: false })} />
+      </div>
+    )
+  }
+}
+
+/** Cuerpo común de las gráficas: esqueleto al cargar, error con reintento, o el gráfico. */
+export function ChartBody({ height, data, fresh, failed, reload, empty, children }) {
+  return (
+    <ChartFrame height={height} busy={!!data && !fresh}>
+      {!data ? (
+        failed ? (
+          <EmptyChart text="No se pudo cargar el gráfico" actionLabel="Reintentar" onAction={reload} />
+        ) : (
+          <div className="skeleton h-full rounded-2xl" />
+        )
+      ) : empty ? (
+        <EmptyChart {...empty} />
+      ) : (
+        children
+      )}
+    </ChartFrame>
+  )
+}
+
+export const AXIS_TICK = { fontSize: 11, fill: '#9CA3AF' }
+export const TOOLTIP_STYLE = { border: '1px solid #E5E7EB', borderRadius: 12, fontSize: 13, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }
+
+export const emptyFor = (range, setRange, allText = 'Aún no hay suficientes movimientos para dibujar el gráfico') =>
+  range === 'all'
+    ? { text: allText }
+    : { text: 'No hubo movimientos en este rango', actionLabel: 'Ver todo el historial', onAction: () => setRange('all') }
+
 /** Gráfico de la probabilidad de «Sí» de UN mercado. */
-export function PriceChart({ marketId, currentYes, live = true }) {
+export function PriceChart(props) {
+  return (
+    <ChartBoundary>
+      <PriceChartInner {...props} />
+    </ChartBoundary>
+  )
+}
+
+function PriceChartInner({ marketId, currentYes, live = true }) {
   const [range, setRange] = useState('all')
-  const rows = useHistory(
-    async () => (await rpc('get_market_history', { p_market_id: marketId, p_limit: 120, p_since: sinceFor(range) })) || [],
-    [marketId, range],
+  const { data, fresh, failed, reload } = useSeries(
+    async () => {
+      const since = sinceFor(range)
+      const rows = (await rpc('get_market_history', { p_market_id: marketId, p_limit: 120, p_since: since })) || []
+      return { rows, since: since ? Date.parse(since) : null, until: serverNow() }
+    },
+    `${marketId}|${range}`,
     { live }
   )
 
-  const data = useMemo(() => {
-    if (!rows) return null
-    const pts = rows.map((r) => ({ t: Date.parse(r.created_at), v: Number(r.yes_price) * 100 }))
-    if (live && pts.length && Number.isFinite(currentYes)) {
-      const last = pts[pts.length - 1]
-      const now = serverNow()
-      if (now > last.t) pts.push({ t: now, v: currentYes * 100 })
+  const view = useMemo(() => {
+    if (!data) return null
+    const pts = data.rows.map((r) => ({ t: Date.parse(r.created_at), v: Number(r.yes_price) * 100 }))
+    const last = pts[pts.length - 1]
+    // La línea llega hasta «ahora» (mercado abierto) o hasta el final de la ventana elegida.
+    if (last && data.until > last.t && (live || data.since != null)) {
+      pts.push({ t: data.until, v: live && Number.isFinite(currentYes) ? currentYes * 100 : last.v })
     }
-    return pts
-  }, [rows, currentYes, live])
+    if (pts.length < 2) return { pts }
+    return { pts, axis: timeAxis(pts[0].t, pts[pts.length - 1].t) }
+  }, [data, currentYes, live])
 
+  const end = view?.pts[view.pts.length - 1]
   return (
     <div>
       <div className="flex justify-end mb-2">
         <RangeTabs value={range} onChange={setRange} />
       </div>
-      {!data ? (
-        <div className="skeleton h-[200px] rounded-2xl" />
-      ) : data.length < 2 ? (
-        <EmptyChart text="Aún no hay suficientes movimientos para dibujar el gráfico" />
-      ) : (
-        <div className="h-[200px] -mx-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+      <ChartBody height={200} data={data} fresh={fresh} failed={failed} reload={reload} empty={view && !view.axis ? emptyFor(range, setRange) : null}>
+        {view?.axis && (
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <AreaChart data={view.pts} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={`fill-${marketId}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#009E60" stopOpacity={0.28} />
@@ -115,19 +167,19 @@ export function PriceChart({ marketId, currentYes, live = true }) {
                 dataKey="t"
                 type="number"
                 scale="time"
-                domain={['dataMin', 'dataMax']}
-                tickFormatter={tickFormat(data[data.length - 1].t - data[0].t)}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                domain={view.axis.domain}
+                ticks={view.axis.ticks}
+                tickFormatter={view.axis.format}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
-                minTickGap={50}
-                tickCount={4}
+                minTickGap={36}
               />
               <YAxis
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
                 tickFormatter={(v) => `${v}%`}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 width={40}
@@ -136,30 +188,48 @@ export function PriceChart({ marketId, currentYes, live = true }) {
                 cursor={{ stroke: '#CBD5E1', strokeDasharray: '3 3' }}
                 labelFormatter={fullTime}
                 formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Sí']}
-                contentStyle={{ border: '1px solid #E5E7EB', borderRadius: 12, fontSize: 13, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}
+                contentStyle={TOOLTIP_STYLE}
               />
               <Area type="stepAfter" dataKey="v" stroke="#009E60" strokeWidth={2.5} fill={`url(#fill-${marketId})`} dot={false} isAnimationActive={false} />
-              <ReferenceDot x={data[data.length - 1].t} y={data[data.length - 1].v} r={4.5} fill="#009E60" stroke="#fff" strokeWidth={2} ifOverflow="visible" />
+              <ReferenceDot x={end.t} y={end.v} r={4.5} fill="#009E60" stroke="#fff" strokeWidth={2} ifOverflow="visible" />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </ChartBody>
     </div>
   )
 }
 
 /** Gráfico de las opciones de un mercado múltiple (una línea por opción). */
-export function GroupChart({ groupId, options, live = true }) {
+export function GroupChart(props) {
+  return (
+    <ChartBoundary>
+      <GroupChartInner {...props} />
+    </ChartBoundary>
+  )
+}
+
+function GroupChartInner({ groupId, options, live = true }) {
   const [range, setRange] = useState('all')
-  const rows = useHistory(
-    async () => (await rpc('get_group_history', { p_group_id: groupId, p_limit: 100, p_since: sinceFor(range) })) || [],
-    [groupId, range],
+  const { data, fresh, failed, reload } = useSeries(
+    async () => {
+      const since = sinceFor(range)
+      const rows = (await rpc('get_group_history', { p_group_id: groupId, p_limit: 100, p_since: since })) || []
+      return { rows, since: since ? Date.parse(since) : null, until: serverNow() }
+    },
+    `${groupId}|${range}`,
     { live }
   )
 
-  const { data, lines } = useMemo(() => {
-    const lines = options.slice(0, 5).map((m, i) => ({ id: m.id, name: m.question, color: LINE_COLORS[i % LINE_COLORS.length], yes: Number(m.yes_pool) }))
-    if (!rows || !rows.length) return { data: rows ? [] : null, lines }
+  const lines = useMemo(
+    () => options.slice(0, 5).map((m, i) => ({ id: m.id, name: m.question, color: LINE_COLORS[i % LINE_COLORS.length] })),
+    [options]
+  )
+
+  const view = useMemo(() => {
+    if (!data) return null
+    const rows = data.rows
+    if (!rows.length) return { pts: [] }
     const ids = new Set(lines.map((l) => l.id))
     const times = [...new Set(rows.map((r) => Date.parse(r.created_at)))].sort((a, b) => a - b)
     const byMarket = new Map()
@@ -170,7 +240,7 @@ export function GroupChart({ groupId, options, live = true }) {
     }
     const cursor = new Map(lines.map((l) => [l.id, 0]))
     const held = new Map()
-    const data = times.map((t) => {
+    const pts = times.map((t) => {
       const point = { t }
       for (const l of lines) {
         const list = byMarket.get(l.id) || []
@@ -184,8 +254,12 @@ export function GroupChart({ groupId, options, live = true }) {
       }
       return point
     })
-    return { data, lines }
-  }, [rows, options])
+    // Cada precio se mantiene hasta «ahora» (mercado abierto) o hasta el final de la ventana elegida.
+    const last = pts[pts.length - 1]
+    if (last && data.until > last.t && (live || data.since != null)) pts.push({ ...last, t: data.until })
+    if (pts.length < 2) return { pts }
+    return { pts, axis: timeAxis(pts[0].t, pts[pts.length - 1].t) }
+  }, [data, lines, live])
 
   return (
     <div>
@@ -200,32 +274,28 @@ export function GroupChart({ groupId, options, live = true }) {
         </div>
         <RangeTabs value={range} onChange={setRange} />
       </div>
-      {!data ? (
-        <div className="skeleton h-[220px] rounded-2xl" />
-      ) : data.length < 2 ? (
-        <EmptyChart text="Aún no hay suficientes movimientos para dibujar el gráfico" />
-      ) : (
-        <div className="h-[220px] -mx-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+      <ChartBody height={220} data={data} fresh={fresh} failed={failed} reload={reload} empty={view && !view.axis ? emptyFor(range, setRange) : null}>
+        {view?.axis && (
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <LineChart data={view.pts} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="#EEF0F3" />
               <XAxis
                 dataKey="t"
                 type="number"
                 scale="time"
-                domain={['dataMin', 'dataMax']}
-                tickFormatter={tickFormat(data[data.length - 1].t - data[0].t)}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                domain={view.axis.domain}
+                ticks={view.axis.ticks}
+                tickFormatter={view.axis.format}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
-                minTickGap={50}
-                tickCount={4}
+                minTickGap={36}
               />
               <YAxis
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
                 tickFormatter={(v) => `${v}%`}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 width={40}
@@ -233,15 +303,15 @@ export function GroupChart({ groupId, options, live = true }) {
               <Tooltip
                 labelFormatter={fullTime}
                 formatter={(v, key) => [`${Number(v).toFixed(1)}%`, lines.find((l) => l.id === key)?.name || key]}
-                contentStyle={{ border: '1px solid #E5E7EB', borderRadius: 12, fontSize: 13, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}
+                contentStyle={TOOLTIP_STYLE}
               />
               {lines.map((l) => (
                 <Line key={l.id} type="stepAfter" dataKey={l.id} stroke={l.color} strokeWidth={2.4} dot={false} isAnimationActive={false} connectNulls />
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </ChartBody>
     </div>
   )
 }

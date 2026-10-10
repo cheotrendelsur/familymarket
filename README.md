@@ -33,7 +33,7 @@ moderador resuelve cada mercado y los ganadores cobran **$1 por acción**. Gana 
 | Rol | Puede |
 |---|---|
 | **Dueño** (`is_admin`) | Todo: crear/editar/resolver/anular mercados, **deshacer una resolución**, nombrar moderadores, cambiar nombres, restablecer contraseñas, ajustar saldos, empezar una partida nueva |
-| **Moderador** (`is_moderator`) | Crear mercados y subir fotos, revisar sugerencias y ver el registro de actividad. **Cerrar, editar y resolver SOLO los mercados que él creó** (incluye los que crea al aprobar una sugerencia); los del dueño u otros moderadores no los puede tocar (migración 016, lo exige el servidor) |
+| **Moderador** (`is_moderator`) | Crear mercados y subir fotos, revisar sugerencias y ver el registro de actividad. **Cerrar las apuestas y resolver (decidir el resultado final) CUALQUIER mercado**; **editar** (texto, foto, categoría, fechas) solo los que él creó (incluye los que crea al aprobar una sugerencia). Deshacer una resolución y anular un mercado siguen siendo solo del dueño (migración 024, lo exige el servidor) |
 | **Jugador** | Operar, sugerir mercados, ver ranking, perfiles y feed en vivo |
 
 El dueño nombra moderadores desde **Admin → Gente** (un interruptor en la fila de cada jugador).
@@ -157,7 +157,7 @@ React 18 + Vite + Tailwind (PWA)  ──HTTPS──▶  Supabase (Postgres + Aut
 
 ```
 src/                  App (pages, components, context, hooks, lib)
-supabase/migrations/  Esquema completo versionado (001…023). Aplicar en orden en el SQL Editor.
+supabase/migrations/  Esquema completo versionado (001…024). Aplicar en orden en el SQL Editor.
 scripts/              loadtest.mjs (seguridad+lógica+acceso+concurrencia), audit.mjs (auditoría aleatoria de cálculos), calibrate.mjs (liquidez vs. jugadores), latency.mjs, throughput.mjs
 tests/                Pruebas E2E de interfaz (vitest + jsdom contra el backend real)
 .github/workflows/    keepalive.yml (evita que Supabase pause el proyecto gratuito)
@@ -191,6 +191,7 @@ docs/AUDITORIA.md     Informe de auditoría: bugs y vulnerabilidades encontrados
 | 021 | **Apertura programada** (`markets.opens_at`) + cuenta deshabilitada no puede operar (`_assert_active` en comprar/vender) |
 | 022 | **Premio por mercado sorpresa** (`REWARD`, aviso `HIDDEN_REWARD`, ajustes en `game_settings`) |
 | 023 | El aviso del premio ahora trae la apuesta oculta (pregunta, resultado, volumen, personas y porcentaje) para mostrarla en la tarjeta animada |
+| 024 | Moderadores cierran y resuelven cualquier mercado (editar solo los suyos) · `get_player_networth` (portafolio de cada jugador) · la carrera de patrimonio con punto de anclaje |
 
 ## Desarrollo
 

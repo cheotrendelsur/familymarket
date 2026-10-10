@@ -10,6 +10,7 @@ import { useToggleSet } from '../hooks/useToggleSet'
 import { haptic, hapticsEnabled, playSound, setHapticsEnabled, setSoundEnabled, soundEnabled } from '../lib/fx'
 import { ChangePasswordSheet } from '../components/ChangePasswordSheet'
 import GroupAccordion from '../components/GroupAccordion'
+import PortfolioChart from '../components/PortfolioChart'
 import OperationsList from '../components/OperationsList'
 import PositionCard from '../components/PositionCard'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -142,6 +143,16 @@ export default function PortfolioPage() {
           </div>
         </div>
       </div>
+
+      {profile?.id && (
+        <PortfolioChart
+          userId={profile.id}
+          title="Mi portafolio"
+          liveNet={positions ? cash + inShares : undefined}
+          liveCash={positions ? cash : undefined}
+          initial={Number(config.initial_balance) || 1000}
+        />
+      )}
 
       <section>
         <div className="flex items-center gap-2.5 mb-3">

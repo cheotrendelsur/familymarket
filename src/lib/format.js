@@ -45,6 +45,12 @@ export const timeShort = (iso) =>
 export const sideLabel = (side) => (side === 'YES' ? 'Sí' : 'No')
 
 /** 1250 -> "$1.2k" (para etiquetas pequeñas). */
+/** Marca de eje Y en dinero: entero con comas hasta $9,999 ($1,050) y compacto desde $10k, para que dos marcas vecinas nunca se vean iguales. */
+export const axisMoney = (v) => {
+  const n = num(v)
+  return Math.abs(n) < 10000 ? `${n < 0 ? '-' : ''}$${Math.round(Math.abs(n)).toLocaleString('en-US')}` : compactMoney(n)
+}
+
 export const compactMoney = (v) => {
   const n = num(v)
   const abs = Math.abs(n)

@@ -31,7 +31,7 @@ function ActionRow({ icon: Icon, label, hint, tone = 'text-gray-800', onClick })
   )
 }
 
-function MarketCard({ market, onMore, onResolve, onOpenNow }) {
+function MarketCard({ market, canEditIt, onMore, onResolve, onOpenNow }) {
   const pseudo = {
     kind: 'single',
     state: market.state,
@@ -59,9 +59,13 @@ function MarketCard({ market, onMore, onResolve, onOpenNow }) {
       </div>
 
       {market.state === 'upcoming' ? (
-        <button onClick={() => onOpenNow(market)} className="w-full mt-3 flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 rounded-xl font-bold shadow-md shadow-violet-500/20 tap-feedback">
-          Abrir ya
-        </button>
+        canEditIt ? (
+          <button onClick={() => onOpenNow(market)} className="w-full mt-3 flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 rounded-xl font-bold shadow-md shadow-violet-500/20 tap-feedback">
+            Abrir ya
+          </button>
+        ) : (
+          <p className="mt-3 text-center text-xs font-semibold text-violet-700 bg-violet-50 rounded-xl py-2">Programado: lo abre quien lo creó</p>
+        )
       ) : market.state !== 'resolved' ? (
         <div className="grid grid-cols-2 gap-2 mt-3">
           <button onClick={() => onResolve(market, 'YES')} className="flex items-center justify-center gap-1.5 bg-polygreen text-white py-3.5 rounded-xl font-bold shadow-md shadow-green-500/20 tap-feedback">
@@ -117,7 +121,8 @@ function WinnerSheet({ list, onPick, onClose }) {
 export default function MarketsTab() {
   const { isOwner } = useAuth()
   const { markets: allMarkets, marketsLoaded } = useGame()
-  const { canManage } = useManage()
+  const { canManage, canEdit } = useManage()
+  // Dueño y moderadores ven y pueden cerrar/resolver todos los mercados; editar, solo los propios (o todos si es el dueño).
   const markets = useMemo(() => allMarkets.filter(canManage), [allMarkets, canManage])
   const actions = useMarketActions()
   const [filter, setFilter] = useState('open')
@@ -167,13 +172,15 @@ export default function MarketsTab() {
         ))}
       </div>
 
-      {!isOwner && <p className="text-xs text-gray-500">Como moderador, aquí ves y manejas solo los mercados que tú creaste.</p>}
+      {!isOwner && (
+        <p className="text-xs text-gray-500">Como moderador puedes cerrar las apuestas y decidir el resultado de cualquier mercado. Editar, solo los que tú creaste.</p>
+      )}
 
       {empty && <p className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">No hay mercados en esta lista.</p>}
 
       <div className="space-y-3">
         {view.singles.map((m) => (
-          <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
+          <MarketCard key={m.id} market={m} canEditIt={canEdit(m)} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
         ))}
         {view.groups.map(([gid, list]) => (
           <div key={gid} className="bg-blue-50/50 border border-blue-100 rounded-3xl p-3 space-y-3">
@@ -186,7 +193,7 @@ export default function MarketsTab() {
               )}
             </div>
             {list.map((m) => (
-              <MarketCard key={m.id} market={m} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
+              <MarketCard key={m.id} market={m} canEditIt={canEdit(m)} onMore={setMore} onResolve={actions.resolve} onOpenNow={(x) => actions.openNow(x, false)} />
             ))}
           </div>
         ))}
@@ -195,11 +202,11 @@ export default function MarketsTab() {
       {more && (
         <Sheet open onClose={() => setMore(null)} title={more.group_topic ? `${more.group_topic} — ${more.question}` : more.question} subtitle="Acciones">
           <div className="divide-y divide-gray-100 pb-3">
-            <ActionRow icon={Pencil} label="Editar" hint="Texto, foto, categoría, fecha de cierre" onClick={run(actions.edit)} />
-            {more.state === 'upcoming' && (
+            {canEdit(more) && <ActionRow icon={Pencil} label="Editar" hint="Texto, foto, categoría, fecha de cierre" onClick={run(actions.edit)} />}
+            {more.state === 'upcoming' && canEdit(more) && (
               <ActionRow icon={CalendarClock} label="Abrir ahora" hint="Los jugadores ya podrán apostar" tone="text-violet-700" onClick={run((m) => actions.openNow(m, false))} />
             )}
-            {more.state === 'upcoming' && more.group_id && (
+            {more.state === 'upcoming' && more.group_id && canEdit(more) && (
               <ActionRow icon={CalendarClock} label="Abrir ahora todo el grupo" tone="text-violet-700" onClick={run((m) => actions.openNow(m, true))} />
             )}
             {more.state === 'open' && (

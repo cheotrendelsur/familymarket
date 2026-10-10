@@ -4,6 +4,7 @@ import { rpc } from '../lib/api'
 import { categoryOf } from '../lib/categories'
 import { friendlyError, money, pct, signedMoney } from '../lib/format'
 import { Avatar } from './Leaderboard'
+import PortfolioChart from './PortfolioChart'
 import Sheet from './ui/Sheet'
 
 function Stat({ icon: Icon, label, value, tone = 'text-gray-900' }) {
@@ -51,6 +52,16 @@ export default function PlayerProfileSheet({ player, onClose }) {
                 Puesto <b>#{player.rank}</b> · {money(player.net_worth)}
               </p>
             </div>
+          </div>
+
+          <div className="mb-3">
+            <PortfolioChart
+              key={player.user_id}
+              userId={player.user_id}
+              title="Su portafolio"
+              liveNet={Number.isFinite(Number(player.net_worth)) ? Number(player.net_worth) : undefined}
+              liveCash={player.cash != null && Number.isFinite(Number(player.cash)) ? Number(player.cash) : undefined}
+            />
           </div>
 
           {error && <p className="bg-red-50 text-red-700 text-sm rounded-xl p-3">{error}</p>}

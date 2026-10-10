@@ -254,6 +254,26 @@ const posValue = (userId) => {
 const netWorth = (p) => p.balance + posValue(p.id)
 const lookup = (id) => byId(id)?.username || 'Alguien'
 
+/** Serie de patrimonio inventada (determinista) de un jugador, con punto de anclaje si hay datos antes de `since`. */
+const netSeries = (p, since) => {
+  const steps = 30
+  const pi = players.indexOf(p)
+  const end = netWorth(p)
+  let v = 1000
+  const all = []
+  for (let i = 0; i <= steps; i += 1) {
+    const t = now() - hour(8) + (hour(8) * i) / steps
+    v = i === steps ? end : v + (end - v) * 0.12 + Math.sin(i * 0.9 + pi) * 18 + Math.cos(i * 1.7 + pi) * 7
+    const f = Math.min(0.75, Math.max(0.1, 0.35 + 0.25 * Math.sin(i / 4 + pi)))
+    all.push({ t, net: v, cash: v * (1 - f), pos: v * f })
+  }
+  const row = (t, x) => ({ taken_at: iso(t), cash: x.cash, positions: x.pos, net_worth: x.net })
+  const out = all.filter((x) => x.t >= since).map((x) => row(x.t, x))
+  const before = since ? all.filter((x) => x.t < since).pop() : null
+  if (before) out.unshift(row(since, before))
+  return out
+}
+
 const priceRow = (m) => {
   const t24 = tradesOf(m, hour(24)).length + (m.trades_extra || 0)
   const t3 = tradesOf(m, hour(3)).length + (m.trades_extra || 0)
@@ -331,16 +351,24 @@ const handlers = {
 
   async get_market_history({ p_market_id, p_limit = 120, p_since }) {
     const since = p_since ? Date.parse(p_since) : 0
-    const pts = (history.get(p_market_id) || []).filter((h) => h.t >= since)
+    const all = history.get(p_market_id) || []
+    const pts = all.filter((h) => h.t >= since)
+    const before = since ? all.filter((h) => h.t < since).pop() : null
     const out = pts.length > p_limit ? pts.filter((_, i) => i % Math.ceil(pts.length / p_limit) === 0) : pts
-    return out.map((h) => ({ created_at: iso(h.t), yes_price: h.yes, no_price: 1 - h.yes }))
+    const rows = out.map((h) => ({ created_at: iso(h.t), yes_price: h.yes, no_price: 1 - h.yes }))
+    // punto de anclaje: el último precio antes de la ventana (igual que el servidor)
+    if (before) rows.unshift({ created_at: iso(since), yes_price: before.yes, no_price: 1 - before.yes })
+    return rows
   },
 
   async get_group_history({ p_group_id, p_since }) {
     const since = p_since ? Date.parse(p_since) : 0
     const rows = []
     for (const m of markets.filter((x) => x.group_id === p_group_id)) {
-      for (const h of history.get(m.id) || []) if (h.t >= since) rows.push({ market_id: m.id, created_at: iso(h.t), yes_price: h.yes })
+      const all = history.get(m.id) || []
+      const before = since ? all.filter((h) => h.t < since).pop() : null
+      if (before) rows.push({ market_id: m.id, created_at: iso(since), yes_price: before.yes })
+      for (const h of all) if (h.t >= since) rows.push({ market_id: m.id, created_at: iso(h.t), yes_price: h.yes })
     }
     return rows
   },
@@ -420,17 +448,16 @@ const handlers = {
   async get_networth_race({ p_since }) {
     const since = p_since ? Date.parse(p_since) : 0
     const rows = []
-    const steps = 30
-    players.forEach((p, pi) => {
-      let v = 1000
-      const end = netWorth(p)
-      for (let i = 0; i <= steps; i += 1) {
-        const t = now() - hour(8) + (hour(8) * i) / steps
-        v = i === steps ? end : v + (end - v) * 0.12 + (Math.sin(i * 0.9 + pi) * 18 + (Math.random() - 0.5) * 14)
-        if (t >= since) rows.push({ user_id: p.id, username: p.username, taken_at: iso(t), net_worth: v })
-      }
+    players.forEach((p) => {
+      for (const r of netSeries(p, since)) rows.push({ user_id: p.id, username: p.username, taken_at: r.taken_at, net_worth: r.net_worth })
     })
     return rows
+  },
+
+  async get_player_networth({ p_user_id, p_since }) {
+    const p = byId(p_user_id)
+    if (!p || p.disabled_at) return []
+    return netSeries(p, p_since ? Date.parse(p_since) : 0)
   },
 
   async get_player_profile({ p_user_id }) {
@@ -504,7 +531,12 @@ const handlers = {
   },
   async staff_update_market({ p_market_id, p_patch, p_apply_group }) {
     const m = markets.find((x) => x.id === p_market_id)
-    if (!me.is_admin && m.created_by !== 'me') throw new Error('Solo puedes editar o cerrar los mercados que tú creaste')
+    if (!me.is_admin && m.created_by !== 'me') {
+      // un moderador solo puede CERRAR las apuestas de un mercado ajeno (igual que el servidor, migración 024)
+      const keys = Object.keys(p_patch)
+      const closing = keys.length === 1 && keys[0] === 'closes_at' && p_patch.closes_at && Date.parse(p_patch.closes_at) <= now() + min(2)
+      if (m.closed || !closing) throw new Error('Solo puedes editar los mercados que tú creaste. Sí puedes cerrar las apuestas y resolver cualquier mercado')
+    }
     const targets = p_apply_group && m.group_id ? markets.filter((x) => x.group_id === m.group_id) : [m]
     for (const t of targets) {
       Object.entries(p_patch).forEach(([k, v]) => {
@@ -662,7 +694,6 @@ const handlers = {
   },
   async resolve_market({ p_market_id, p_outcome }) {
     const m = markets.find((x) => x.id === p_market_id)
-    if (!me.is_admin && m.created_by !== 'me') throw new Error('Solo puedes resolver los mercados que tú creaste')
     m.closed = true
     m.outcome = p_outcome
     m.resolved_at = iso(now())

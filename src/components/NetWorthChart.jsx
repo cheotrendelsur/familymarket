@@ -1,27 +1,35 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { rpc } from '../lib/api'
 import { serverNow } from '../lib/clock'
-import { compactMoney, money } from '../lib/format'
-import { usePolling } from '../hooks/usePolling'
-import { LINE_COLORS, RangeTabs, tickFormat } from './PriceCharts'
-
-const RANGE_MS = { '1h': 3600e3, '6h': 6 * 3600e3, '1d': 24 * 3600e3, all: null }
-
-const full = (t) => new Date(t).toLocaleString('es-VE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+import { fullTime, moneyScale, timeAxis } from '../lib/chartTime'
+import { axisMoney, money } from '../lib/format'
+import { useSeries } from '../hooks/useSeries'
+import { AXIS_TICK, ChartBody, ChartBoundary, LINE_COLORS, RangeTabs, TOOLTIP_STYLE, sinceFor } from './PriceCharts'
 
 /** "Carrera de patrimonio": cómo se mueve la fortuna de cada jugador en el tiempo. */
-export default function NetWorthChart({ leaderboard, meId }) {
+export default function NetWorthChart(props) {
+  return (
+    <ChartBoundary>
+      <NetWorthChartInner {...props} />
+    </ChartBoundary>
+  )
+}
+
+function NetWorthChartInner({ leaderboard, meId }) {
   const [range, setRange] = useState('all')
-  const [rows, setRows] = useState(null)
   const [showAll, setShowAll] = useState(false)
   const [hidden, setHidden] = useState({})
 
-  const load = useCallback(async () => {
-    const since = RANGE_MS[range] ? new Date(serverNow() - RANGE_MS[range]).toISOString() : null
-    setRows((await rpc('get_networth_race', { p_since: since, p_max_points: 80 })) || [])
-  }, [range])
-  usePolling(load, { interval: 45000 })
+  const { data, fresh, failed, reload } = useSeries(
+    async () => {
+      const since = sinceFor(range)
+      const rows = (await rpc('get_networth_race', { p_since: since, p_max_points: 80 })) || []
+      return { rows, since: since ? Date.parse(since) : null, until: serverNow() }
+    },
+    range,
+    { interval: 45000 }
+  )
 
   const players = useMemo(
     () =>
@@ -41,29 +49,30 @@ export default function NetWorthChart({ leaderboard, meId }) {
     [players, hidden, showAll]
   )
 
-  const data = useMemo(() => {
-    if (!rows) return null
+  const view = useMemo(() => {
+    if (!data) return null
     const byTime = new Map()
-    for (const r of rows) {
+    for (const r of data.rows) {
       const t = Date.parse(r.taken_at)
       if (!byTime.has(t)) byTime.set(t, { t })
       byTime.get(t)[r.user_id] = Number(r.net_worth)
     }
-    const points = [...byTime.values()].sort((a, b) => a.t - b.t)
+    const pts = [...byTime.values()].sort((a, b) => a.t - b.t)
     // Punto "ahora" con los valores en vivo del ranking.
-    if (points.length && players.length) {
-      const live = { t: serverNow() }
+    if (pts.length && players.length) {
+      const live = { t: Math.max(data.until, pts[pts.length - 1].t + 1) }
       for (const p of players) live[p.id] = p.net
-      if (live.t > points[points.length - 1].t) points.push(live)
+      pts.push(live)
     }
-    return points
-  }, [rows, players])
+    if (pts.length < 2) return { pts }
+    return { pts, axis: timeAxis(pts[0].t, pts[pts.length - 1].t) }
+  }, [data, players])
 
-  const domain = useMemo(() => {
-    if (!data?.length) return [0, 1]
+  const yScale = useMemo(() => {
+    if (!view?.pts.length) return moneyScale(0, 1)
     let lo = Infinity
     let hi = -Infinity
-    for (const pt of data)
+    for (const pt of view.pts)
       for (const p of shown) {
         const v = pt[p.id]
         if (typeof v === 'number') {
@@ -71,10 +80,16 @@ export default function NetWorthChart({ leaderboard, meId }) {
           hi = Math.max(hi, v)
         }
       }
-    if (!Number.isFinite(lo)) return [0, 1]
-    const pad = Math.max((hi - lo) * 0.12, 15)
-    return [Math.floor(lo - pad), Math.ceil(hi + pad)]
-  }, [data, shown])
+    if (!Number.isFinite(lo)) return moneyScale(0, 1)
+    const pad = Math.max((hi - lo) * 0.1, 10)
+    return moneyScale(lo - pad, hi + pad)
+  }, [view, shown])
+
+  const empty = view && !view.axis
+    ? range === 'all'
+      ? { text: 'La carrera empieza con las primeras operaciones. Aquí verás quién va subiendo y quién cayendo.' }
+      : { text: 'Nadie se movió en este rango', actionLabel: 'Ver todo el historial', onAction: () => setRange('all') }
+    : null
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-card p-4">
@@ -83,43 +98,37 @@ export default function NetWorthChart({ leaderboard, meId }) {
         <RangeTabs value={range} onChange={setRange} />
       </div>
 
-      {!data ? (
-        <div className="skeleton h-[240px] rounded-2xl" />
-      ) : data.length < 2 ? (
-        <div className="h-[240px] flex items-center justify-center text-center text-sm text-gray-400 bg-gray-50 rounded-2xl px-6">
-          La carrera empieza con las primeras operaciones. Aquí verás quién va subiendo y quién cayendo.
-        </div>
-      ) : (
-        <div className="h-[240px] -mx-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+      <ChartBody height={240} data={data} fresh={fresh} failed={failed} reload={reload} empty={empty}>
+        {view?.axis && (
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <LineChart data={view.pts} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="#EEF0F3" />
               <XAxis
                 dataKey="t"
                 type="number"
                 scale="time"
-                domain={['dataMin', 'dataMax']}
-                tickFormatter={tickFormat(data[data.length - 1].t - data[0].t)}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                domain={view.axis.domain}
+                ticks={view.axis.ticks}
+                tickFormatter={view.axis.format}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
-                minTickGap={50}
-                tickCount={4}
+                minTickGap={36}
               />
               <YAxis
-                domain={domain}
-                tickFormatter={(v) => compactMoney(v)}
-                tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                domain={yScale.domain}
+                ticks={yScale.ticks}
+                tickFormatter={axisMoney}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
-                width={46}
-                tickCount={5}
+                width={50}
               />
               <Tooltip
-                labelFormatter={full}
+                labelFormatter={fullTime}
                 formatter={(v, key) => [money(v), players.find((p) => p.id === key)?.name || key]}
                 itemSorter={(item) => -item.value}
-                contentStyle={{ border: '1px solid #E5E7EB', borderRadius: 12, fontSize: 13, boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}
+                contentStyle={TOOLTIP_STYLE}
               />
               {shown.map((p) => (
                 <Line
@@ -135,8 +144,8 @@ export default function NetWorthChart({ leaderboard, meId }) {
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </ChartBody>
 
       <div className="flex flex-wrap gap-1.5 mt-3">
         {players

@@ -11,14 +11,15 @@ import { useMarketActions } from '../pages/admin/useMarketActions'
  */
 export default function StaffBar({ market = null, group = null }) {
   const { isStaff, isOwner } = useAuth()
-  const { canManage } = useManage()
+  const { canManage, canEdit } = useManage()
   const actions = useMarketActions()
   if (!isStaff) return null
 
   const list = group || [market]
   const first = list[0]
-  // Un moderador solo ve los atajos en los mercados que él creó.
+  // Dueño y moderadores pueden cerrar y resolver cualquier mercado; editar, solo el dueño y quien lo creó.
   if (!canManage(first)) return null
+  const editable = canEdit(first)
   const unresolved = list.filter((m) => m.state !== 'resolved')
   const allResolved = unresolved.length === 0
   const anyOpen = list.some((m) => m.state === 'open')
@@ -30,7 +31,7 @@ export default function StaffBar({ market = null, group = null }) {
         <ShieldCheck size={14} /> Solo tú ves esto
       </p>
 
-      {anyUpcoming && (
+      {anyUpcoming && editable && (
         <button onClick={() => actions.openNow(first, !!group)} className="w-full flex items-center justify-center gap-2 bg-violet-600 text-white py-3.5 rounded-xl font-bold shadow-md shadow-violet-500/20 tap-feedback">
           Abrir ya
         </button>
@@ -70,10 +71,18 @@ export default function StaffBar({ market = null, group = null }) {
         </div>
       )}
 
+      {!editable && (
+        <p className="text-xs text-gray-500 leading-snug">
+          Este mercado lo creó otra persona: puedes cerrar las apuestas y decidir el resultado final, pero no editarlo.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => actions.edit(first)} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-700 tap-feedback">
-          <Pencil size={15} /> Editar
-        </button>
+        {editable && (
+          <button onClick={() => actions.edit(first)} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-700 tap-feedback">
+            <Pencil size={15} /> Editar
+          </button>
+        )}
         {anyOpen && (
           <button onClick={() => actions.closeNow(first, !!group)} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-sm font-bold text-amber-800 tap-feedback">
             <Lock size={15} /> Cerrar apuestas
